@@ -38,14 +38,18 @@ fn fft_dispatch<F: Field>(
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
 ) {
-    let computed_root_table = if root_table.is_some() {
-        None
+    if root_table.is_some() {
+        return fft_classic(input, zero_factor.unwrap_or(0), root_table.unwrap());
     } else {
-        Some(fft_root_table(input.len()))
-    };
-    let used_root_table = root_table.or(computed_root_table.as_ref()).unwrap();
+        let pre_computed = F::pre_compute_fft_root_table(input.len());
+        if pre_computed.is_some() {
+            return fft_classic(input, zero_factor.unwrap_or(0), pre_computed.unwrap());
+        } else {
+            let computed = fft_root_table::<F>(input.len());
 
-    fft_classic(input, zero_factor.unwrap_or(0), used_root_table);
+            return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
+        }
+    };
 }
 
 #[inline]

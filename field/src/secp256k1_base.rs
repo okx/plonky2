@@ -8,7 +8,6 @@ use itertools::Itertools;
 use num::bigint::BigUint;
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
-
 use crate::types::{Field, PrimeField, Sample};
 
 /// The base field of the secp256k1 elliptic curve.

@@ -1,0 +1,14 @@
+[package]
+name = "plonky2_gen"
+description = "Generator function of"
+license = "Apache-2.0"
+version = "0.3.0"
+authors = [""]
+edition = "2021"
+repository = ""
+keywords = ["crypto"]
+
+
+[build-dependencies]
+plonky2_field = {  path = "../field" }
+plonky2_util = {  path = "../util" }

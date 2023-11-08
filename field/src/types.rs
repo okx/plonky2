@@ -7,13 +7,16 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 use num::bigint::BigUint;
 use num::{Integer, One, ToPrimitive, Zero};
-use plonky2_util::bits_u64;
+use plonky2_util::{bits_u64};
 use rand::rngs::OsRng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 
 use crate::extension::Frobenius;
+use crate::fft::FftRootTable;
 use crate::ops::Square;
+
+
 
 /// Sampling
 pub trait Sample: Sized {
@@ -269,6 +272,13 @@ pub trait Field:
         assert!(n_log <= Self::TWO_ADICITY);
         let base = Self::POWER_OF_TWO_GENERATOR;
         base.exp_power_of_2(Self::TWO_ADICITY - n_log)
+    }
+
+    fn pre_compute_fft_root_table(
+        _: usize,
+    ) -> Option<&'static FftRootTable<Self>>
+     {
+        None
     }
 
     /// Computes a multiplicative subgroup whose order is known in advance.
