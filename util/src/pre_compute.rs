@@ -1,5 +1,5 @@
-pub const PRE_COMPUTE_START: usize = 13;
-pub const PRE_COMPUTE_END: usize = 14;
+pub const PRE_COMPUTE_START: usize = 10;
+pub const PRE_COMPUTE_END: usize = 18;
 
 pub const fn get_pre_compute_size(start:usize, end: usize) -> usize {
     let nums = (1 << (end-start + 1)) -1 ;
