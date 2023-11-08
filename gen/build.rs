@@ -82,6 +82,7 @@ where
 }
 
 pub fn generate_to(file: &mut File) -> Result<(), Error> {
+    println!("generate for start {:?}, end {:?}", PRE_COMPUTE_START, PRE_COMPUTE_END);
     let context = RouContext::<PRE_COMPUTE_START, PRE_COMPUTE_END>::new_boxed();
     let pre_g = context.inspect_raw().as_ref();
 
