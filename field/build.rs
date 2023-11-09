@@ -11,16 +11,13 @@ use quote::quote;
 use syn::Lit;
 
 fn main() {
+    println!("cargo:rerun-if-changed=generated");
     let cargo_manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
-    let mut dir_generated: PathBuf = PathBuf::from_str(&cargo_manifest_dir)
+    let path: PathBuf = PathBuf::from_str(&cargo_manifest_dir)
         .unwrap()
-        .join("generated/"); //
-                             // let _ = std::process::Command::new("rm").arg("-rf").arg(path).output();
-    std::fs::remove_dir_all(dir_generated.clone());
+        .join("generated/goldilock_root_of_unity.rs");
 
-    let path = dir_generated.join("goldilock_root_of_unity.rs");
-    println!("cargo:rerun-if-changed=generated");
     let token_stream = build_token_stream(&path).expect("build token stream error");
     _ = write_generated_file(token_stream, "goldilock_root_of_unity.rs");
 }
