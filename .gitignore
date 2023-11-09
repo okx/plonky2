@@ -10,3 +10,4 @@ pgo-data.profdata
 .DS_Store
 
 **/generated
+/docs/**bench**

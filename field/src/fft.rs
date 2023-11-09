@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
+use rayon::prelude::*;
 use unroll::unroll_for_loops;
 
 use crate::packable::Packable;
@@ -152,15 +153,35 @@ fn fft_classic_simd<P: PackedField>(
 
         // omega values for this iteration, as slice of vectors
         let omega_table = P::pack_slice(&root_table[lg_half_m][..]);
-        for k in (0..packed_n).step_by(packed_m) {
-            for j in 0..half_packed_m {
-                let omega = omega_table[j];
-                let t = omega * packed_values[k + half_packed_m + j];
-                let u = packed_values[k + j];
-                packed_values[k + j] = u + t;
-                packed_values[k + half_packed_m + j] = u - t;
-            }
-        }
+        // for k in (0..packed_n).step_by(packed_m) {
+        //     for j in 0..half_packed_m {
+        //         let omega = omega_table[j];
+        //         let t = omega * packed_values[k + half_packed_m + j];
+        //         let u = packed_values[k + j];
+        //         packed_values[k + j] = u + t;
+        //         packed_values[k + half_packed_m + j] = u - t;
+        //     }
+        // }
+
+        packed_values
+            .par_chunks_mut(packed_m)
+            .enumerate()
+            .for_each(|(chunk_idx, slice)| {
+                let (lo, hi) = slice.split_at_mut(half_packed_m);
+
+                lo.par_iter_mut()
+                    .zip(hi)
+                    .enumerate()
+                    .for_each(|(j, (lo_val, hi_val))| {
+                        let k = packed_m * chunk_idx;
+
+                        let omega = omega_table[j];
+                        let t = omega * (*hi_val);
+                        let u = *lo_val;
+                        *lo_val = u + t;
+                        *hi_val = u - t;
+                    })
+            });
     }
 }
 
