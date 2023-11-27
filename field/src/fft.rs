@@ -1,6 +1,8 @@
 use alloc::vec::Vec;
 use core::cmp::{max, min};
 
+#[cfg(feature = "cuda")]
+use cryptography_cuda::{iNTT, NTT, types::NTTInputOutputOrder};
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 use unroll::unroll_for_loops;
 
@@ -32,8 +34,19 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     root_table
 }
 
-#[inline]
-fn fft_dispatch<F: Field>(
+#[cfg(feature = "cuda")]
+fn fft_dispatch_gpu<F: Field>(
+    input: &mut [F],
+    zero_factor: Option<usize>,
+    root_table: Option<&FftRootTable<F>>,
+) {
+    println!("field supported by cuda: {:?}", F::CUDA_SUPPORT);
+    if F::CUDA_SUPPORT {
+        return NTT(0, input, NTTInputOutputOrder::NN);
+    }
+}
+
+fn fft_dispatch_cpu<F: Field>(
     input: &mut [F],
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
@@ -50,6 +63,17 @@ fn fft_dispatch<F: Field>(
             return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
         }
     };
+}
+
+#[inline]
+fn fft_dispatch<F: Field>(
+    input: &mut [F],
+    zero_factor: Option<usize>,
+    root_table: Option<&FftRootTable<F>>,
+) {
+    #[cfg(feature = "cuda")]
+    return fft_dispatch_gpu(input, zero_factor, root_table);
+    return fft_dispatch_cpu(input, zero_factor, root_table);
 }
 
 #[inline]

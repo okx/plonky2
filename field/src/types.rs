@@ -94,6 +94,9 @@ pub trait Field:
     /// The bit length of the field order.
     const BITS: usize;
 
+    /// Whether this field is supported by cuda
+    const CUDA_SUPPORT: bool = false;
+
     fn order() -> BigUint;
     fn characteristic() -> BigUint;
 

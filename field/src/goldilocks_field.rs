@@ -89,6 +89,8 @@ impl Field for GoldilocksField {
 
     const BITS: usize = 64;
 
+    const CUDA_SUPPORT: bool = true;
+
     fn order() -> BigUint {
         Self::ORDER.into()
     }

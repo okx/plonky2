@@ -1,0 +1,3 @@
+[submodule "cryptography_cuda"]
+	path = cryptography_cuda
+	url = git@github.com:okx/cryptography_cuda.git
