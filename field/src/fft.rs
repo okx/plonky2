@@ -40,9 +40,10 @@ fn fft_dispatch_gpu<F: Field>(
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
 ) {
-    println!("field supported by cuda: {:?}", F::CUDA_SUPPORT);
     if F::CUDA_SUPPORT {
         return NTT(0, input, NTTInputOutputOrder::NN);
+    } else {
+        return fft_dispatch_cpu(input, zero_factor, root_table);
     }
 }
 

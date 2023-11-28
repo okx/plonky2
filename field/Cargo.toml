@@ -32,5 +32,5 @@ proc-macro2 = "1"
 quote = "1"
 
 [features]
-default = ["cuda"]
+default = []
 cuda = []
