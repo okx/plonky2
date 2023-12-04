@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use num::range;
 use core::mem::MaybeUninit;
 use core::slice;
 
@@ -85,30 +86,64 @@ fn capacity_up_to_mut<T>(v: &mut Vec<T>, len: usize) -> &mut [MaybeUninit<T>] {
 fn fill_subtree<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
-) -> H::Hash {
-    assert_eq!(leaves.len(), digests_buf.len() / 2 + 1);
-    if digests_buf.is_empty() {
-        H::hash_or_noop(&leaves[0])
-    } else {
-        // Layout is: left recursive output || left child digest
-        //             || right child digest || right recursive output.
-        // Split `digests_buf` into the two recursive outputs (slices) and two child digests
-        // (references).
-        let (left_digests_buf, right_digests_buf) = digests_buf.split_at_mut(digests_buf.len() / 2);
-        let (left_digest_mem, left_digests_buf) = left_digests_buf.split_last_mut().unwrap();
-        let (right_digest_mem, right_digests_buf) = right_digests_buf.split_first_mut().unwrap();
-        // Split `leaves` between both children.
-        let (left_leaves, right_leaves) = leaves.split_at(leaves.len() / 2);
+) -> H::Hash {    
 
-        let (left_digest, right_digest) = plonky2_maybe_rayon::join(
-            || fill_subtree::<F, H>(left_digests_buf, left_leaves),
-            || fill_subtree::<F, H>(right_digests_buf, right_leaves),
-        );
-
-        left_digest_mem.write(left_digest);
-        right_digest_mem.write(right_digest);
-        H::two_to_one(left_digest, right_digest)
+    // if one leaf => return it hash
+    if leaves.len() == 1 {
+        let hash = H::hash_or_noop(&leaves[0]);
+        digests_buf[0].write(hash);
+        return hash
     }
+    // if two leaves => return their concat hash
+    if leaves.len() == 2 {
+        let hash_left = H::hash_or_noop(&leaves[0]);
+        let hash_right = H::hash_or_noop(&leaves[1]);
+        digests_buf[0].write(hash_left);
+        digests_buf[1].write(hash_right);
+        return H::two_to_one(hash_left, hash_right)
+    }
+
+    assert_eq!(leaves.len(), digests_buf.len() / 2 + 1);
+
+    // leaves first - we can do all in parallel
+    let (_, digests_leaves) = digests_buf.split_at_mut(digests_buf.len() - leaves.len());
+    digests_leaves.into_par_iter().zip(leaves).for_each(|(digest, leaf)| {
+        digest.write(H::hash_or_noop(leaf));
+    });
+    
+    // internal nodes - we can do in parallel per level    
+    let mut last_index = digests_buf.len() - leaves.len();
+
+    log2_strict(leaves.len());
+    for level_log in range(1, log2_strict(leaves.len())).rev() {        
+        let level_size = 1 << level_log;
+        // println!("Size {} Last index {}", level_size, last_index);
+        let (_, digests_slice) = digests_buf.split_at_mut(last_index - level_size);
+        let (digests_slice, next_digests) = digests_slice.split_at_mut(level_size);
+
+        digests_slice.into_par_iter().zip(last_index - level_size .. last_index).for_each(|(digest, idx)| {
+            let left_idx = 2 * (idx + 1) - last_index;
+            let right_idx = left_idx + 1;
+            
+            unsafe {
+                let left_digest = next_digests[left_idx].assume_init();
+                let right_digest = next_digests[right_idx].assume_init();
+                digest.write(H::two_to_one(left_digest, right_digest));
+                // println!("Size {} Index {} {:?} {:?}", level_size, idx, left_digest, right_digest);
+            }            
+        });        
+        last_index -= level_size;        
+    }   
+    
+    // return cap hash
+    let dummy = [F::ZERO];
+    let mut hash = H::hash_or_noop(&dummy);
+    unsafe {
+        let left_digest = digests_buf[0].assume_init();
+        let right_digest = digests_buf[1].assume_init();
+        hash = H::two_to_one(left_digest, right_digest);
+    }
+    hash
 }
 
 fn fill_digests_buf<F: RichField, H: Hasher<F>>(
@@ -189,33 +224,30 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
     pub fn prove(&self, leaf_index: usize) -> MerkleProof<F, H> {
         let cap_height = log2_strict(self.cap.len());
         let num_layers = log2_strict(self.leaves.len()) - cap_height;
-        debug_assert_eq!(leaf_index >> (cap_height + num_layers), 0);
+        let subtree_digest_size = (1 << (num_layers + 1)) - 2;      // 2 ^ (k+1) - 2
+        let subtree_idx = leaf_index / (1 << num_layers);
 
-        let digest_tree = {
-            let tree_index = leaf_index >> num_layers;
-            let tree_len = self.digests.len() >> cap_height;
-            &self.digests[tree_len * tree_index..tree_len * (tree_index + 1)]
-        };
+        let siblings: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(num_layers);
+        if num_layers == 0 {
+            return MerkleProof {siblings}
+        }
 
-        // Mask out high bits to get the index within the sub-tree.
-        let mut pair_index = leaf_index & ((1 << num_layers) - 1);
+        // digests index where we start
+        let idx = subtree_digest_size - (1 << num_layers) + (leaf_index % (1 << num_layers));               
+
         let siblings = (0..num_layers)
             .map(|i| {
-                let parity = pair_index & 1;
-                pair_index >>= 1;
-
-                // The layers' data is interleaved as follows:
-                // [layer 0, layer 1, layer 0, layer 2, layer 0, layer 1, layer 0, layer 3, ...].
-                // Each of the above is a pair of siblings.
-                // `pair_index` is the index of the pair within layer `i`.
-                // The index of that the pair within `digests` is
-                // `pair_index * 2 ** (i + 1) + (2 ** i - 1)`.
-                let siblings_index = (pair_index << (i + 1)) + (1 << i) - 1;
-                // We have an index for the _pair_, but we want the index of the _sibling_.
-                // Double the pair index to get the index of the left sibling. Conditionally add `1`
-                // if we are to retrieve the right sibling.
-                let sibling_index = 2 * siblings_index + (1 - parity);
-                digest_tree[sibling_index]
+                // relative index
+                let rel_idx = (idx + 2 - (1 << i+1)) / (1 << i);
+                // absolute index
+                let mut abs_idx = subtree_idx * subtree_digest_size + rel_idx;
+                if (rel_idx & 1) == 1 {
+                    abs_idx -= 1;
+                }
+                else {
+                    abs_idx += 1;
+                }                
+                self.digests[abs_idx]
             })
             .collect();
 
