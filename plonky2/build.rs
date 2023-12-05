@@ -1,17 +1,20 @@
 // use std::env;
-use std::path::PathBuf;
+use std::{path::PathBuf, env};
 
 fn main() {
+    let pwd = env::current_dir().unwrap();
+    let libdir = pwd.parent().unwrap().join("cryptography_cuda/cuda/merkle");
+    let header_file = libdir.join("merkle.h");
+
     // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search=plonky2");
+    println!("cargo:rustc-link-search={}", libdir.to_str().unwrap());
 
     // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
-    // println!("cargo:rustc-link-lib=cmerkle-poseidon-rust");
-    println!("cargo:rustc-link-lib=cmerkle-gpu");
+    // shared library.    
+    println!("cargo:rustc-link-lib=merkle-gpu");
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
-    println!("cargo:rerun-if-changed=../cryptography_cuda/cuda/merkle/merkle.h");
+    println!("cargo:rerun-if-changed={}", header_file.to_str().unwrap());
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -19,7 +22,7 @@ fn main() {
     let bindings = bindgen::Builder::default()
         // The input header we would like to generate
         // bindings for.
-        .header("../cryptography_cuda/cuda/merkle/merkle.h")
+        .header(header_file.to_str().unwrap())
         // Tell cargo to invalidate the built crate whenever any of the
         // included header files changed.
         .parse_callbacks(Box::new(bindgen::CargoCallbacks))
@@ -29,6 +32,7 @@ fn main() {
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
+    
     let out_path = PathBuf::from("src");
     bindings
         .write_to_file(out_path.join("bindings.rs"))

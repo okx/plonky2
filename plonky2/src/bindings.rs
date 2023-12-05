@@ -235,6 +235,15 @@ extern "C" {
     );
 }
 extern "C" {
+    pub fn fill_digests_buf_linear_gpu(
+        digests_buf_size: u64,
+        cap_buf_size: u64,
+        leaves_buf_size: u64,
+        leaf_size: u64,
+        cap_height: u64,
+    );
+}
+extern "C" {
     pub fn fill_init(
         digests_count: u64,
         leaves_count: u64,
