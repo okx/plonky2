@@ -193,13 +193,13 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             }
         }
 
-        // let now = Instant::now();
+        let now = Instant::now();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
         fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
-        // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
 
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
@@ -256,7 +256,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
         // TODO ugly way: if it is 25, it is Keccak
-        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE {
+        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE / 8 {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         }
         else {
