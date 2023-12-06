@@ -10,7 +10,7 @@ use std::time::Instant;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{fill_delete, get_digests_ptr, get_leaves_ptr, get_cap_ptr, fill_init, fill_init_rounds, fill_delete_rounds, fill_digests_buf_linear_gpu};
+use crate::{fill_delete, get_digests_ptr, get_leaves_ptr, get_cap_ptr, fill_init,  fill_digests_buf_linear_gpu};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
@@ -206,13 +206,11 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     let cap_height: u64  = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaves[0].len().try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
-    let n_rounds: u64 = log2_strict(leaves.len()).try_into().unwrap();
 
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        fill_init(digests_count, leaves_count, caps_count, leaf_size, hash_size);
-        fill_init_rounds(leaves_count, n_rounds + 1);
+        fill_init(digests_count, leaves_count, caps_count, leaf_size, hash_size);        
     
         // copy data to C
         let mut pd : *mut u64 = get_digests_ptr();
@@ -259,9 +257,8 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
             let h : H::Hash = H::Hash::from_bytes(&parts.f1);
             cp.write(h);
             pc = pc.add(4);
-        }        
-        
-        fill_delete_rounds();
+        }
+
         fill_delete();
     }
 }
@@ -286,7 +283,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
         // TODO ugly way: if it is 25, it is Keccak
-        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE {
+        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE / 8 {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         }
         else {
