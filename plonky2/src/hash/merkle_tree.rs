@@ -1,20 +1,23 @@
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use num::range;
-use once_cell::sync::Lazy;
 use core::mem::MaybeUninit;
 use core::slice;
 use std::sync::Mutex;
 use std::time::Instant;
 
+use num::range;
+use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{fill_delete, get_digests_ptr, get_leaves_ptr, get_cap_ptr, fill_init,  fill_digests_buf_linear_gpu};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher, HasherType};
 use crate::util::log2_strict;
+use crate::{
+    fill_delete, fill_digests_buf_linear_gpu, fill_init, get_cap_ptr, get_digests_ptr,
+    get_leaves_ptr,
+};
 
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
@@ -93,13 +96,12 @@ fn capacity_up_to_mut<T>(v: &mut Vec<T>, len: usize) -> &mut [MaybeUninit<T>] {
 fn fill_subtree<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
-) -> H::Hash {    
-
+) -> H::Hash {
     // if one leaf => return it hash
     if leaves.len() == 1 {
         let hash = H::hash_or_noop(&leaves[0]);
         digests_buf[0].write(hash);
-        return hash
+        return hash;
     }
     // if two leaves => return their concat hash
     if leaves.len() == 2 {
@@ -107,42 +109,48 @@ fn fill_subtree<F: RichField, H: Hasher<F>>(
         let hash_right = H::hash_or_noop(&leaves[1]);
         digests_buf[0].write(hash_left);
         digests_buf[1].write(hash_right);
-        return H::two_to_one(hash_left, hash_right)
+        return H::two_to_one(hash_left, hash_right);
     }
 
     assert_eq!(leaves.len(), digests_buf.len() / 2 + 1);
 
     // leaves first - we can do all in parallel
     let (_, digests_leaves) = digests_buf.split_at_mut(digests_buf.len() - leaves.len());
-    digests_leaves.into_par_iter().zip(leaves).for_each(|(digest, leaf)| {
-        digest.write(H::hash_or_noop(leaf));
-    });
-    
-    // internal nodes - we can do in parallel per level    
+    digests_leaves
+        .into_par_iter()
+        .zip(leaves)
+        .for_each(|(digest, leaf)| {
+            digest.write(H::hash_or_noop(leaf));
+        });
+
+    // internal nodes - we can do in parallel per level
     let mut last_index = digests_buf.len() - leaves.len();
 
     log2_strict(leaves.len());
-    for level_log in range(1, log2_strict(leaves.len())).rev() {        
+    for level_log in range(1, log2_strict(leaves.len())).rev() {
         let level_size = 1 << level_log;
         // println!("Size {} Last index {}", level_size, last_index);
         let (_, digests_slice) = digests_buf.split_at_mut(last_index - level_size);
         let (digests_slice, next_digests) = digests_slice.split_at_mut(level_size);
 
-        digests_slice.into_par_iter().zip(last_index - level_size .. last_index).for_each(|(digest, idx)| {
-            let left_idx = 2 * (idx + 1) - last_index;
-            let right_idx = left_idx + 1;
-            
-            unsafe {
-                let left_digest = next_digests[left_idx].assume_init();
-                let right_digest = next_digests[right_idx].assume_init();
-                digest.write(H::two_to_one(left_digest, right_digest));
-                // println!("Size {} Index {} {:?} {:?}", level_size, idx, left_digest, right_digest);
-            }            
-        });        
-        last_index -= level_size;        
-    }   
-    
-    // return cap hash    
+        digests_slice
+            .into_par_iter()
+            .zip(last_index - level_size..last_index)
+            .for_each(|(digest, idx)| {
+                let left_idx = 2 * (idx + 1) - last_index;
+                let right_idx = left_idx + 1;
+
+                unsafe {
+                    let left_digest = next_digests[left_idx].assume_init();
+                    let right_digest = next_digests[right_idx].assume_init();
+                    digest.write(H::two_to_one(left_digest, right_digest));
+                    // println!("Size {} Index {} {:?} {:?}", level_size, idx, left_digest, right_digest);
+                }
+            });
+        last_index -= level_size;
+    }
+
+    // return cap hash
     let hash: <H as Hasher<F>>::Hash;
     unsafe {
         let left_digest = digests_buf[0].assume_init();
@@ -223,32 +231,60 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
     let leaves_count: u64 = leaves.len().try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
-    let cap_height: u64  = cap_height.try_into().unwrap();
+    let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaves[0].len().try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
 
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        fill_init(digests_count, leaves_count, caps_count, leaf_size, hash_size);        
-    
+        if H::HASHER_TYPE == HasherType::Poseidon {
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                0,
+            );
+        } else {
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                1,
+            );
+        }
+
         // copy data to C
-        let mut pd : *mut u64 = get_digests_ptr();
-        let mut pl : *mut u64 = get_leaves_ptr();
-        let mut pc : *mut u64 = get_cap_ptr();
-                
+        let mut pd: *mut u64 = get_digests_ptr();
+        let mut pl: *mut u64 = get_leaves_ptr();
+        let mut pc: *mut u64 = get_cap_ptr();
+
         for leaf in leaves {
             for elem in leaf {
                 let val = &elem.to_canonical_u64();
                 std::ptr::copy(val, pl, 8);
-                pl = pl.add(1);                
+                pl = pl.add(1);
             }
         }
 
-        let now = Instant::now();
+        // let now = Instant::now();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
-        fill_digests_buf_linear_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
-        println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        fill_digests_buf_linear_gpu(
+            digests_count,
+            caps_count,
+            leaves_count,
+            leaf_size,
+            cap_height,
+        );
+
+        //println!(
+        //    "Time to fill digests in C on GPU: {} ms",
+        //    now.elapsed().as_millis()
+        //);
 
         // TODO - debug code - to remove in future
         // let mut pd : *mut u64 = get_digests_ptr();
@@ -277,18 +313,18 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
         pd = get_digests_ptr();
         */
 
-        // copy data from C        
+        // copy data from C
         for dg in digests_buf {
-            let mut parts = U8U64 {f1: [0; 32]};
+            let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h : H::Hash = H::Hash::from_bytes(&parts.f1);
+            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
             dg.write(h);
             pd = pd.add(4);
-        }        
+        }
         for cp in cap_buf {
-            let mut parts = U8U64 {f1: [0; 32]};
+            let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pc, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h : H::Hash = H::Hash::from_bytes(&parts.f1);
+            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
             cp.write(h);
             pc = pc.add(4);
         }
@@ -320,14 +356,12 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         if leaf_size <= H::HASH_SIZE / 8 {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         } else {
-        if H::HASHER_TYPE == HasherType::Keccak {
-            fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+            if H::HASHER_TYPE == HasherType::Keccak {
+                fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+            } else {
+                fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+            }
         }
-        else {
-            assert!(H::HASHER_TYPE == HasherType::Poseidon);
-            fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        }
-    }
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
@@ -351,29 +385,28 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
     pub fn prove(&self, leaf_index: usize) -> MerkleProof<F, H> {
         let cap_height = log2_strict(self.cap.len());
         let num_layers = log2_strict(self.leaves.len()) - cap_height;
-        let subtree_digest_size = (1 << (num_layers + 1)) - 2;      // 2 ^ (k+1) - 2
+        let subtree_digest_size = (1 << (num_layers + 1)) - 2; // 2 ^ (k+1) - 2
         let subtree_idx = leaf_index / (1 << num_layers);
 
         let siblings: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(num_layers);
         if num_layers == 0 {
-            return MerkleProof {siblings}
+            return MerkleProof { siblings };
         }
 
         // digests index where we start
-        let idx = subtree_digest_size - (1 << num_layers) + (leaf_index % (1 << num_layers));               
+        let idx = subtree_digest_size - (1 << num_layers) + (leaf_index % (1 << num_layers));
 
         let siblings = (0..num_layers)
             .map(|i| {
                 // relative index
-                let rel_idx = (idx + 2 - (1 << i+1)) / (1 << i);
+                let rel_idx = (idx + 2 - (1 << i + 1)) / (1 << i);
                 // absolute index
                 let mut abs_idx = subtree_idx * subtree_digest_size + rel_idx;
                 if (rel_idx & 1) == 1 {
                     abs_idx -= 1;
-                }
-                else {
+                } else {
                     abs_idx += 1;
-                }                
+                }
                 self.digests[abs_idx]
             })
             .collect();

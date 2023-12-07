@@ -259,6 +259,7 @@ extern "C" {
         caps_count: u64,
         leaf_size: u64,
         hash_size: u64,
+        hash_type: u64,
     );
 }
 extern "C" {
