@@ -15,6 +15,12 @@ use crate::hash::poseidon::PoseidonHash;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 
+#[derive(PartialEq)]
+pub enum HasherType {
+    Keccak,
+    Poseidon,
+}
+
 pub trait GenericHashOut<F: RichField>:
     Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
 {
@@ -26,6 +32,8 @@ pub trait GenericHashOut<F: RichField>:
 
 /// Trait for hash functions.
 pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
+    const HASHER_TYPE: HasherType;
+
     /// Size of `Hash` in bytes.
     const HASH_SIZE: usize;
 

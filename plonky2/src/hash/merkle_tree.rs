@@ -4,16 +4,20 @@ use core::mem::MaybeUninit;
 use core::slice;
 use std::sync::Mutex;
 use std::time::Instant;
-use once_cell::sync::Lazy;
 
+use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
-use crate::{fill_delete, fill_digests_buf_in_c, get_digests_ptr, get_leaves_ptr, get_cap_ptr, fill_init, fill_init_rounds, fill_delete_rounds, fill_digests_buf_in_rounds_in_c, fill_digests_buf_in_rounds_in_c_on_gpu};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher};
+use crate::plonk::config::{GenericHashOut, Hasher, HasherType};
 use crate::util::log2_strict;
+use crate::{
+    fill_delete, fill_delete_rounds, fill_digests_buf_in_c, fill_digests_buf_in_rounds_in_c,
+    fill_digests_buf_in_rounds_in_c_on_gpu, fill_init, fill_init_rounds, get_cap_ptr,
+    get_digests_ptr, get_leaves_ptr,
+};
 
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
@@ -169,7 +173,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
     let leaves_count: u64 = leaves.len().try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
-    let cap_height: u64  = cap_height.try_into().unwrap();
+    let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaves[0].len().try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
     let n_rounds: u64 = log2_strict(leaves.len()).try_into().unwrap();
@@ -177,29 +181,55 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        fill_init(digests_count, leaves_count, caps_count, leaf_size, hash_size);
-        fill_init_rounds(leaves_count, n_rounds + 1);
-    
+        if H::HASHER_TYPE == HasherType::Poseidon {
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                0,
+            );
+        } else {
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                1,
+            );
+        }
+
         // copy data to C
-        let mut pd : *mut u64 = get_digests_ptr();
-        let mut pl : *mut u64 = get_leaves_ptr();
-        let mut pc : *mut u64 = get_cap_ptr();
-                
+        let mut pd: *mut u64 = get_digests_ptr();
+        let mut pl: *mut u64 = get_leaves_ptr();
+        let mut pc: *mut u64 = get_cap_ptr();
+
         for leaf in leaves {
             for elem in leaf {
                 let val = &elem.to_canonical_u64();
                 std::ptr::copy(val, pl, 8);
-                pl = pl.add(1);                
+                pl = pl.add(1);
             }
         }
 
-        let now = Instant::now();
+        // let now = Instant::now();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
-        fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
-        println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        fill_digests_buf_in_rounds_in_c_on_gpu(
+            digests_count,
+            caps_count,
+            leaves_count,
+            leaf_size,
+            cap_height,
+        );
+        // println!(
+        //    "Time to fill digests in C on GPU: {} ms",
+        //    now.elapsed().as_millis()
+        // );
 
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
@@ -214,26 +244,25 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         pd = get_digests_ptr();
         */
 
-        // copy data from C        
+        // copy data from C
         for dg in digests_buf {
-            let mut parts = U8U64 {f1: [0; 32]};
+            let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h : H::Hash = H::Hash::from_bytes(&parts.f1);
+            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
             dg.write(h);
             pd = pd.add(4);
-        }        
+        }
         for cp in cap_buf {
-            let mut parts = U8U64 {f1: [0; 32]};
+            let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pc, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h : H::Hash = H::Hash::from_bytes(&parts.f1);
+            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
             cp.write(h);
             pc = pc.add(4);
-        }        
-        
+        }
+
         fill_delete_rounds();
         fill_delete();
     }
-    
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
@@ -258,8 +287,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         // TODO ugly way: if it is 25, it is Keccak
         if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE / 8 {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        }
-        else {
+        } else {
             fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         }
 
@@ -344,7 +372,11 @@ mod tests {
     ) -> Result<()> {
         let now = Instant::now();
         let tree = MerkleTree::<F, C::Hasher>::new(leaves.clone(), cap_height);
-        println!("Time to build Merkle tree with {} leaves: {} ms", leaves.len(), now.elapsed().as_millis());
+        println!(
+            "Time to build Merkle tree with {} leaves: {} ms",
+            leaves.len(),
+            now.elapsed().as_millis()
+        );
         for (i, leaf) in leaves.into_iter().enumerate() {
             let proof = tree.prove(i);
             verify_merkle_proof_to_cap(leaf, i, &tree.cap, &proof)?;
