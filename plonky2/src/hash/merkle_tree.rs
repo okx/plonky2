@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::{fill_delete, get_digests_ptr, get_leaves_ptr, get_cap_ptr, fill_init,  fill_digests_buf_linear_gpu};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher};
+use crate::plonk::config::{GenericHashOut, Hasher, HasherType};
 use crate::util::log2_strict;
 
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
@@ -186,6 +186,26 @@ fn fill_digests_buf<F: RichField, H: Hasher<F>>(
             subtree_cap.write(fill_subtree::<F, H>(subtree_digests, subtree_leaves));
         },
     );
+
+    // TODO - debug code - to remove in future
+    /*
+    let digests_count: u64 = digests_buf.len().try_into().unwrap();
+    let leaves_count: u64 = leaves.len().try_into().unwrap();
+    let cap_height: u64  = cap_height.try_into().unwrap();
+    let leaf_size: u64 = leaves[0].len().try_into().unwrap();
+    let fname = format!("cpu-{}-{}-{}-{}.txt", digests_count, leaves_count, leaf_size, cap_height);
+    let mut file = File::create(fname).unwrap();
+    for digest in digests_buf {
+        unsafe {
+            let hash = digest.assume_init().to_vec();
+            for x in hash {
+                let str = format!("{} ", x.to_canonical_u64());
+                file.write_all(str.as_bytes());
+            }
+        }
+        file.write_all(b"\n");
+    }
+    */
 }
 
 #[repr(C)]
@@ -230,6 +250,7 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
         fill_digests_buf_linear_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
 
+        // TODO - debug code - to remove in future
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
         println!("*** Digests");
@@ -239,6 +260,19 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
                 pd = pd.add(1);
             }
             println!();
+        }
+        pd = get_digests_ptr();
+        */
+        /*
+        let fname = format!("gpu-{}-{}-{}-{}.txt", digests_count, leaves_count, leaf_size, cap_height);
+        let mut file = File::create(fname).unwrap();
+        for _i in 0..digests_count {
+            for _j in 0..4 {
+                let str = format!("{} ", *pd);
+                file.write_all(str.as_bytes());
+                pd = pd.add(1);
+            }
+            file.write_all(b"\n");
         }
         pd = get_digests_ptr();
         */
@@ -282,13 +316,18 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
-        // TODO ugly way: if it is 25, it is Keccak
-        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE / 8 {
+        // if leaf_size <= 4, the hash is the leaf itself, so there is no point in accelerating the computation on GPU
+        if leaf_size <= H::HASH_SIZE / 8 {
+            fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        } else {
+        if H::HASHER_TYPE == HasherType::Keccak {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         }
         else {
+            assert!(H::HASHER_TYPE == HasherType::Poseidon);
             fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         }
+    }
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
