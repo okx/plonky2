@@ -200,6 +200,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
                 1,
             );
         }
+        fill_init_rounds(leaves_count, n_rounds);
 
         // copy data to C
         let mut pd: *mut u64 = get_digests_ptr();
@@ -219,6 +220,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
+        
         fill_digests_buf_in_rounds_in_c_on_gpu(
             digests_count,
             caps_count,
@@ -226,6 +228,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             leaf_size,
             cap_height,
         );
+        
         // println!(
         //    "Time to fill digests in C on GPU: {} ms",
         //    now.elapsed().as_millis()
