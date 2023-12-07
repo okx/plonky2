@@ -1,3 +1,6 @@
 [submodule "cryptography_cuda"]
 	path = cryptography_cuda
 	url = ./cryptography_cuda
+[submodule "./cryptography_cuda"]
+	url = git@github.com:okx/cryptography_cuda.git
+	branch = dev-dumi
