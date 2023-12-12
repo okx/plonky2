@@ -5,7 +5,7 @@ use alloc::vec::Vec;
 use core::usize;
 
 use itertools::Itertools;
-use keccak_hash::keccak;
+use crate::hash::simple_keccak::keccak;
 use plonky2_util::ceil_div_usize;
 
 use crate::field::extension::Extendable;

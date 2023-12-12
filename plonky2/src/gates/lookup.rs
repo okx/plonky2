@@ -4,7 +4,7 @@ use alloc::vec::Vec;
 use core::usize;
 
 use itertools::Itertools;
-use keccak_hash::keccak;
+use crate::hash::simple_keccak::keccak;
 
 use super::lookup_table::LookupTable;
 use crate::field::extension::Extendable;
