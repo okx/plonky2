@@ -4,7 +4,8 @@ use core::iter;
 use core::mem::size_of;
 
 use itertools::Itertools;
-use crate::hash::simple_keccak::keccak;
+use keccak_hash::keccak;
+
 use crate::hash::hash_types::{BytesHash, RichField};
 use crate::hash::hashing::PlonkyPermutation;
 use crate::plonk::config::{Hasher, HasherType};
