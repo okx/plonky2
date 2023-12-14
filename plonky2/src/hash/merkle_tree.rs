@@ -182,6 +182,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
 
     unsafe {
         if H::HASHER_TYPE == HasherType::Poseidon {
+            // println!("Use Poseidon!");
             fill_init(
                 digests_count,
                 leaves_count,
@@ -191,6 +192,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
                 0,
             );
         } else {
+            // println!("Use Keccak!");
             fill_init(
                 digests_count,
                 leaves_count,
@@ -221,19 +223,9 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
         
-        fill_digests_buf_in_rounds_in_c_on_gpu(
-            digests_count,
-            caps_count,
-            leaves_count,
-            leaf_size,
-            cap_height,
-        );
+        fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
+        // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
         
-        // println!(
-        //    "Time to fill digests in C on GPU: {} ms",
-        //    now.elapsed().as_millis()
-        // );
-
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
         println!("*** Digests");
@@ -246,19 +238,21 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         }
         pd = get_digests_ptr();
         */
-
+        
         // copy data from C
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
             dg.write(h);
             pd = pd.add(4);
         }
         for cp in cap_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             std::ptr::copy(pc, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
             pc = pc.add(4);
         }
@@ -287,8 +281,8 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
-        // TODO ugly way: if it is 25, it is Keccak
-        if H::HASH_SIZE == 25 || leaf_size <= H::HASH_SIZE / 8 {
+        // if the input is small, just do the hashing on CPU
+        if leaf_size <= H::HASH_SIZE / 8 {
             fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
         } else {
             fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
@@ -300,7 +294,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             digests.set_len(num_digests);
             cap.set_len(len_cap);
         }
-
+        /*
+        println!{"Digest Buffer"};
+        for dg in &digests {
+            println!("{:?}", dg);
+        }
+        println!{"Cap Buffer"};
+        for dg in &cap {
+            println!("{:?}", dg);
+        }
+        */
         Self {
             leaves,
             digests,
@@ -359,10 +362,29 @@ mod tests {
     use super::*;
     use crate::field::extension::Extendable;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig, KeccakGoldilocksConfig};
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
+    }
+
+    const test_leaves: [u64; 28] = [
+        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366, 
+        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027, 
+        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616, 
+        15480539652174185186, 5454640537573844893, 3664852224809466446, 5547792914986991141, 5885254103823722535, 6014567676786509263, 11767239063322171808
+    ];
+
+    fn test_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            let mut elem = Vec::with_capacity(k);
+            for j in 0..k {
+                elem.push(F::from_canonical_u64(test_leaves[i*k+j]));
+            }
+            data.push(elem);
+        }
+        data
     }
 
     fn verify_all_leaves<
@@ -417,7 +439,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_trees() -> Result<()> {
+    fn test_merkle_trees_poseidon() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -425,6 +447,22 @@ mod tests {
         let log_n = 8;
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
+
+        verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merkle_trees_keccak() -> Result<()> {
+        const D: usize = 2;
+        type C = KeccakGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let log_n = 2;
+        let n = 1 << log_n;
+        let leaves = random_data::<F>(n, 7);
+        // let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 

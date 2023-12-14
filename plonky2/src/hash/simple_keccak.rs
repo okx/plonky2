@@ -196,7 +196,6 @@ mod tests {
 
     use anyhow::Result;
     use anyhow::ensure;
-    use itertools::Itertools;
     use keccak_hash::keccak;
 
     use super::{keccak_flex, keccaks};
