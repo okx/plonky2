@@ -1,24 +1,35 @@
-use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
-use std::sync::Mutex;
-use std::time::Instant;
 
-use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher, HasherType};
+use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
+
+#[cfg(feature = "cuda")]
 use crate::{
     fill_delete, fill_delete_rounds, fill_digests_buf_in_c, fill_digests_buf_in_rounds_in_c,
     fill_digests_buf_in_rounds_in_c_on_gpu, fill_init, fill_init_rounds, get_cap_ptr,
     get_digests_ptr, get_leaves_ptr,
 };
 
+#[cfg(feature = "cuda")]
+use crate::plonk::config::{HasherType};
+
+#[cfg(feature = "cuda")]
+use alloc::sync::Arc;
+
+#[cfg(feature = "cuda")]
+use once_cell::sync::Lazy;
+
+#[cfg(feature = "cuda")]
+use std::sync::Mutex;
+
+#[cfg(feature = "cuda")]
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
@@ -158,12 +169,14 @@ fn fill_digests_buf<F: RichField, H: Hasher<F>>(
     );
 }
 
+#[cfg(feature = "cuda")]
 #[repr(C)]
 union U8U64 {
     f1: [u8; 32],
     f2: [u64; 4],
 }
 
+#[cfg(feature = "cuda")]
 fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
@@ -209,10 +222,15 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         let mut pl: *mut u64 = get_leaves_ptr();
         let mut pc: *mut u64 = get_cap_ptr();
 
+        /*
+         * Note: std::ptr::copy(val, pl, 8); does not
+         * work in "release" mode: it produces sigsegv. Hence, we replaced it with
+         * manual copy.
+         */
         for leaf in leaves {
             for elem in leaf {
-                let val = &elem.to_canonical_u64();
-                std::ptr::copy(val, pl, 8);
+                let val = &elem.to_canonical_u64(); 
+                *pl = *val;
                 pl = pl.add(1);
             }
         }
@@ -240,26 +258,63 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         */
         
         // copy data from C
+        /*
+         * Note: std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE); does not
+         * work in "release" mode: it produces sigsegv. Hence, we replaced it with
+         * manual copy.
+         */
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
-            std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE);
+            // copy hash from pd to digests_buf
+            for i in 0..4 {
+                parts.f2[i] = *pd;
+                pd = pd.add(1);
+            }
             let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
             let h: H::Hash = H::Hash::from_bytes(slice);
             dg.write(h);
-            pd = pd.add(4);
         }
         for cp in cap_buf {
             let mut parts = U8U64 { f1: [0; 32] };
-            std::ptr::copy(pc, parts.f2.as_mut_ptr(), H::HASH_SIZE);
+            // copy hash from pc to cap_buf
+            for i in 0..4 {
+                parts.f2[i] = *pc;
+                pc = pc.add(1);
+            }
             let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
             let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
-            pc = pc.add(4);
         }
 
         fill_delete_rounds();
         fill_delete();
     }
+}
+
+#[cfg(feature = "cuda")]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    let leaf_size = leaves[0].len();
+    // if the input is small, just do the hashing on CPU
+    if leaf_size <= H::HASH_SIZE / 8 {
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    } else {
+        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
@@ -271,7 +326,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             cap_height,
             log2_leaves_len
         );
-        let leaf_size = leaves[0].len();
 
         let num_digests = 2 * (leaves.len() - (1 << cap_height));
         let mut digests = Vec::with_capacity(num_digests);
@@ -281,12 +335,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
-        // if the input is small, just do the hashing on CPU
-        if leaf_size <= H::HASH_SIZE / 8 {
-            fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        } else {
-            fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        }
+        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
