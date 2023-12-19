@@ -1,21 +1,24 @@
 //! Concrete instantiation of a hash function.
 
 use alloc::vec::Vec;
+use core::fmt::Debug;
+use std::iter::repeat;
 
 use crate::field::extension::Extendable;
-use crate::hash::hash_types::{HashOut, HashOutTarget, RichField};
+use crate::field::types::Field;
+use crate::hash::hash_types::{HashOut, HashOutTarget, RichField, NUM_HASH_OUT_ELTS};
 use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::AlgebraicHasher;
 
-pub(crate) const SPONGE_RATE: usize = 8;
-pub(crate) const SPONGE_CAPACITY: usize = 4;
+pub const SPONGE_RATE: usize = 8;
+pub const SPONGE_CAPACITY: usize = 4;
 pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     pub fn hash_or_noop<H: AlgebraicHasher<F>>(&mut self, inputs: Vec<Target>) -> HashOutTarget {
         let zero = self.zero();
-        if inputs.len() <= 4 {
+        if inputs.len() <= NUM_HASH_OUT_ELTS {
             HashOutTarget::from_partial(&inputs, zero)
         } else {
             self.hash_n_to_hash_no_pad::<H>(inputs)
@@ -26,7 +29,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         &mut self,
         inputs: Vec<Target>,
     ) -> HashOutTarget {
-        HashOutTarget::from_vec(self.hash_n_to_m_no_pad::<H>(inputs, 4))
+        HashOutTarget::from_vec(self.hash_n_to_m_no_pad::<H>(inputs, NUM_HASH_OUT_ELTS))
     }
 
     pub fn hash_n_to_m_no_pad<H: AlgebraicHasher<F>>(
@@ -35,7 +38,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         num_outputs: usize,
     ) -> Vec<Target> {
         let zero = self.zero();
-
         let mut state = [zero; SPONGE_WIDTH];
 
         // Absorb all input chunks.
@@ -61,19 +63,61 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-/// A one-way compression function which takes two ~256 bit inputs and returns a ~256 bit output.
-pub fn compress<F: RichField, P: PlonkyPermutation<F>>(x: HashOut<F>, y: HashOut<F>) -> HashOut<F> {
-    let mut perm_inputs = [F::ZERO; SPONGE_WIDTH];
-    perm_inputs[..4].copy_from_slice(&x.elements);
-    perm_inputs[4..8].copy_from_slice(&y.elements);
-    HashOut {
-        elements: P::permute(perm_inputs)[..4].try_into().unwrap(),
-    }
+/// Permutation that can be used in the sponge construction for an algebraic hash.
+pub trait PlonkyPermutation<T: Copy + Default>:
+    AsRef<[T]> + Copy + Debug + Default + Eq + Sync + Send
+{
+    const RATE: usize;
+    const WIDTH: usize;
+
+    /// Initialises internal state with values from `iter` until
+    /// `iter` is exhausted or `Self::WIDTH` values have been
+    /// received; remaining state (if any) initialised with
+    /// `T::default()`. To initialise remaining elements with a
+    /// different value, instead of your original `iter` pass
+    /// `iter.chain(std::iter::repeat(F::from_canonical_u64(12345)))`
+    /// or similar.
+    fn new<I: IntoIterator<Item = T>>(iter: I) -> Self;
+
+    /// Set idx-th state element to be `elt`. Panics if `idx >= WIDTH`.
+    fn set_elt(&mut self, elt: T, idx: usize);
+
+    /// Set state element `i` to be `elts[i] for i =
+    /// start_idx..start_idx + n` where `n = min(elts.len(),
+    /// WIDTH-start_idx)`. Panics if `start_idx > WIDTH`.
+    fn set_from_iter<I: IntoIterator<Item = T>>(&mut self, elts: I, start_idx: usize);
+
+    /// Same semantics as for `set_from_iter` but probably faster than
+    /// just calling `set_from_iter(elts.iter())`.
+    fn set_from_slice(&mut self, elts: &[T], start_idx: usize);
+
+    /// Apply permutation to internal state
+    fn new_permute(&mut self);
+
+    fn permute(input: [T; SPONGE_WIDTH]) -> [T; SPONGE_WIDTH];
+
+    /// Return a slice of `RATE` elements
+    fn squeeze(&self) -> &[T];
 }
 
-/// Permutation that can be used in the sponge construction for an algebraic hash.
-pub trait PlonkyPermutation<F: RichField> {
-    fn permute(input: [F; SPONGE_WIDTH]) -> [F; SPONGE_WIDTH];
+/// A one-way compression function which takes two ~256 bit inputs and returns a ~256 bit output.
+pub fn compress<F: Field, P: PlonkyPermutation<F>>(x: HashOut<F>, y: HashOut<F>) -> HashOut<F> {
+    // TODO: With some refactoring, this function could be implemented as
+    // hash_n_to_m_no_pad(chain(x.elements, y.elements), NUM_HASH_OUT_ELTS).
+
+    debug_assert_eq!(x.elements.len(), NUM_HASH_OUT_ELTS);
+    debug_assert_eq!(y.elements.len(), NUM_HASH_OUT_ELTS);
+    debug_assert!(P::RATE >= NUM_HASH_OUT_ELTS);
+
+    let mut perm = P::new(repeat(F::ZERO));
+    perm.set_from_slice(&x.elements, 0);
+    perm.set_from_slice(&y.elements, NUM_HASH_OUT_ELTS);
+
+    perm.new_permute();
+
+    HashOut {
+        elements: perm.squeeze()[..NUM_HASH_OUT_ELTS].try_into().unwrap(),
+    }
 }
 
 /// Hash a message without any padding step. Note that this can enable length-extension attacks.
@@ -82,27 +126,27 @@ pub fn hash_n_to_m_no_pad<F: RichField, P: PlonkyPermutation<F>>(
     inputs: &[F],
     num_outputs: usize,
 ) -> Vec<F> {
-    let mut state = [F::ZERO; SPONGE_WIDTH];
+    let mut perm = P::new(repeat(F::ZERO));
 
     // Absorb all input chunks.
-    for input_chunk in inputs.chunks(SPONGE_RATE) {
-        state[..input_chunk.len()].copy_from_slice(input_chunk);
-        state = P::permute(state);
+    for input_chunk in inputs.chunks(P::RATE) {
+        perm.set_from_slice(input_chunk, 0);
+        perm.new_permute();
     }
 
     // Squeeze until we have the desired number of outputs.
     let mut outputs = Vec::new();
     loop {
-        for &item in state.iter().take(SPONGE_RATE) {
+        for &item in perm.squeeze() {
             outputs.push(item);
             if outputs.len() == num_outputs {
                 return outputs;
             }
         }
-        state = P::permute(state);
+        perm.new_permute();
     }
 }
 
 pub fn hash_n_to_hash_no_pad<F: RichField, P: PlonkyPermutation<F>>(inputs: &[F]) -> HashOut<F> {
-    HashOut::from_vec(hash_n_to_m_no_pad::<F, P>(inputs, 4))
+    HashOut::from_vec(hash_n_to_m_no_pad::<F, P>(inputs, NUM_HASH_OUT_ELTS))
 }

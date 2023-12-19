@@ -15,6 +15,12 @@ use crate::hash::poseidon::PoseidonHash;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 
+#[derive(PartialEq)]
+pub enum HasherType {
+    Keccak,
+    Poseidon,
+}
+
 pub trait GenericHashOut<F: RichField>:
     Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
 {
@@ -26,6 +32,8 @@ pub trait GenericHashOut<F: RichField>:
 
 /// Trait for hash functions.
 pub trait Hasher<F: RichField>: Sized + Clone + Debug + Eq + PartialEq {
+    const HASHER_TYPE: HasherType;
+
     /// Size of `Hash` in bytes.
     const HASH_SIZE: usize;
 
@@ -69,6 +77,7 @@ pub trait Hasher<F: RichField>: Sized + Clone + Debug + Eq + PartialEq {
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash;
 }
 
+/// Trait for algebraic hash functions, built from a permutation using the sponge construction.
 /// Trait for algebraic hash functions, built from a permutation using the sponge construction.
 pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
     // TODO: Adding a `const WIDTH: usize` here yields a compiler error down the line.

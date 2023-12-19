@@ -9,6 +9,7 @@ keywords = ["cryptography", "SNARK", "PLONK", "FRI"]
 categories = ["cryptography"]
 edition = "2021"
 default-run = "generate_constants"
+build = "build.rs"
 
 [features]
 default = ["gate_testing", "parallel", "rand_chacha", "std", "timing"]
@@ -16,6 +17,7 @@ gate_testing = []
 parallel = ["hashbrown/rayon", "maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std"]
 timing = ["std"]
+cuda = []
 
 [dependencies]
 ahash = { version = "0.7.6", default-features = false, features = ["compile-time-rng"] } # NOTE: Be sure to keep this version the same as the dependency in `hashbrown`.
@@ -33,6 +35,7 @@ rand_chacha = { version = "0.3.1", optional = true, default-features = false }
 serde = { version = "1.0", default-features = false, features = ["derive"] }
 static_assertions = { version = "1.1.0", default-features = false }
 unroll = { version = "0.1.5", default-features = false }
+once_cell = { version = "1.18.0" }
 
 [dev-dependencies]
 criterion = { version = "0.4.0", default-features = false }
@@ -47,6 +50,9 @@ tynm = { version = "0.1.6", default-features = false }
 
 [target.'cfg(not(target_env = "msvc"))'.dev-dependencies]
 jemallocator = "0.5.0"
+
+[build-dependencies]
+bindgen = { version = "0.68.1" }
 
 [[bin]]
 name = "generate_constants"

@@ -10,11 +10,40 @@ use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
+#[cfg(feature = "cuda")]
+use crate::{
+    fill_delete, fill_delete_rounds, fill_digests_buf_in_c, fill_digests_buf_in_rounds_in_c,
+    fill_digests_buf_in_rounds_in_c_on_gpu, fill_init, fill_init_rounds, get_cap_ptr,
+    get_digests_ptr, get_leaves_ptr,
+};
+
+#[cfg(feature = "cuda")]
+use crate::plonk::config::{HasherType};
+
+#[cfg(feature = "cuda")]
+use alloc::sync::Arc;
+
+#[cfg(feature = "cuda")]
+use once_cell::sync::Lazy;
+
+#[cfg(feature = "cuda")]
+use std::sync::Mutex;
+
+#[cfg(feature = "cuda")]
+static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
 /// It can be used in place of the root to verify Merkle paths, which are `h` elements shorter.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(bound = "")]
+// TODO: Change H to GenericHashOut<F>, since this only cares about the hash, not the hasher.
 pub struct MerkleCap<F: RichField, H: Hasher<F>>(pub Vec<H::Hash>);
+
+impl<F: RichField, H: Hasher<F>> Default for MerkleCap<F, H> {
+    fn default() -> Self {
+        Self(Vec::new())
+    }
+}
 
 impl<F: RichField, H: Hasher<F>> MerkleCap<F, H> {
     pub fn len(&self) -> usize {
@@ -34,7 +63,7 @@ impl<F: RichField, H: Hasher<F>> MerkleCap<F, H> {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MerkleTree<F: RichField, H: Hasher<F>> {
     /// The data in the leaves of the Merkle tree.
     pub leaves: Vec<Vec<F>>,
@@ -51,6 +80,16 @@ pub struct MerkleTree<F: RichField, H: Hasher<F>> {
 
     /// The Merkle cap.
     pub cap: MerkleCap<F, H>,
+}
+
+impl<F: RichField, H: Hasher<F>> Default for MerkleTree<F, H> {
+    fn default() -> Self {
+        Self {
+            leaves: Vec::new(),
+            digests: Vec::new(),
+            cap: MerkleCap::default(),
+        }
+    }
 }
 
 fn capacity_up_to_mut<T>(v: &mut Vec<T>, len: usize) -> &mut [MaybeUninit<T>] {
@@ -130,6 +169,154 @@ fn fill_digests_buf<F: RichField, H: Hasher<F>>(
     );
 }
 
+#[cfg(feature = "cuda")]
+#[repr(C)]
+union U8U64 {
+    f1: [u8; 32],
+    f2: [u64; 4],
+}
+
+#[cfg(feature = "cuda")]
+fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    let digests_count: u64 = digests_buf.len().try_into().unwrap();
+    let leaves_count: u64 = leaves.len().try_into().unwrap();
+    let caps_count: u64 = cap_buf.len().try_into().unwrap();
+    let cap_height: u64 = cap_height.try_into().unwrap();
+    let leaf_size: u64 = leaves[0].len().try_into().unwrap();
+    let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
+    let n_rounds: u64 = log2_strict(leaves.len()).try_into().unwrap();
+
+    let _lock = gpu_lock.lock().unwrap();
+
+    unsafe {
+        if H::HASHER_TYPE == HasherType::Poseidon {
+            // println!("Use Poseidon!");
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                0,
+            );
+        } else {
+            // println!("Use Keccak!");
+            fill_init(
+                digests_count,
+                leaves_count,
+                caps_count,
+                leaf_size,
+                hash_size,
+                1,
+            );
+        }
+        fill_init_rounds(leaves_count, n_rounds);
+
+        // copy data to C
+        let mut pd: *mut u64 = get_digests_ptr();
+        let mut pl: *mut u64 = get_leaves_ptr();
+        let mut pc: *mut u64 = get_cap_ptr();
+
+        /*
+         * Note: std::ptr::copy(val, pl, 8); does not
+         * work in "release" mode: it produces sigsegv. Hence, we replaced it with
+         * manual copy.
+         */
+        for leaf in leaves {
+            for elem in leaf {
+                let val = &elem.to_canonical_u64(); 
+                *pl = *val;
+                pl = pl.add(1);
+            }
+        }
+
+        // let now = Instant::now();
+        // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
+        // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
+        // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
+        // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
+        
+        fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
+        // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        
+        // let mut pd : *mut u64 = get_digests_ptr();
+        /*
+        println!("*** Digests");
+        for i in 0..leaves.len() {
+            for j in 0..leaf_size {
+                print!("{} ", *pd);
+                pd = pd.add(1);
+            }
+            println!();
+        }
+        pd = get_digests_ptr();
+        */
+        
+        // copy data from C
+        /*
+         * Note: std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE); does not
+         * work in "release" mode: it produces sigsegv. Hence, we replaced it with
+         * manual copy.
+         */
+        for dg in digests_buf {
+            let mut parts = U8U64 { f1: [0; 32] };
+            // copy hash from pd to digests_buf
+            for i in 0..4 {
+                parts.f2[i] = *pd;
+                pd = pd.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            dg.write(h);
+        }
+        for cp in cap_buf {
+            let mut parts = U8U64 { f1: [0; 32] };
+            // copy hash from pc to cap_buf
+            for i in 0..4 {
+                parts.f2[i] = *pc;
+                pc = pc.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            cp.write(h);
+        }
+
+        fill_delete_rounds();
+        fill_delete();
+    }
+}
+
+#[cfg(feature = "cuda")]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    let leaf_size = leaves[0].len();
+    // if the input is small, just do the hashing on CPU
+    if leaf_size <= H::HASH_SIZE / 8 {
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    } else {
+        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    }
+}
+
+#[cfg(not(feature = "cuda"))]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+}
+
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
     pub fn new(leaves: Vec<Vec<F>>, cap_height: usize) -> Self {
         let log2_leaves_len = log2_strict(leaves.len());
@@ -148,7 +335,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
-        fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
@@ -156,7 +343,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             digests.set_len(num_digests);
             cap.set_len(len_cap);
         }
-
+        /*
+        println!{"Digest Buffer"};
+        for dg in &digests {
+            println!("{:?}", dg);
+        }
+        println!{"Cap Buffer"};
+        for dg in &cap {
+            println!("{:?}", dg);
+        }
+        */
         Self {
             leaves,
             digests,
@@ -183,7 +379,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         // Mask out high bits to get the index within the sub-tree.
         let mut pair_index = leaf_index & ((1 << num_layers) - 1);
         let siblings = (0..num_layers)
-            .into_iter()
             .map(|i| {
                 let parity = pair_index & 1;
                 pair_index >>= 1;
@@ -209,15 +404,36 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Instant;
+
     use anyhow::Result;
 
     use super::*;
     use crate::field::extension::Extendable;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig, KeccakGoldilocksConfig};
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
+    }
+
+    const test_leaves: [u64; 28] = [
+        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366, 
+        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027, 
+        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616, 
+        15480539652174185186, 5454640537573844893, 3664852224809466446, 5547792914986991141, 5885254103823722535, 6014567676786509263, 11767239063322171808
+    ];
+
+    fn test_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
+        let mut data = Vec::with_capacity(n);
+        for i in 0..n {
+            let mut elem = Vec::with_capacity(k);
+            for j in 0..k {
+                elem.push(F::from_canonical_u64(test_leaves[i*k+j]));
+            }
+            data.push(elem);
+        }
+        data
     }
 
     fn verify_all_leaves<
@@ -228,7 +444,13 @@ mod tests {
         leaves: Vec<Vec<F>>,
         cap_height: usize,
     ) -> Result<()> {
+        let now = Instant::now();
         let tree = MerkleTree::<F, C::Hasher>::new(leaves.clone(), cap_height);
+        println!(
+            "Time to build Merkle tree with {} leaves: {} ms",
+            leaves.len(),
+            now.elapsed().as_millis()
+        );
         for (i, leaf) in leaves.into_iter().enumerate() {
             let proof = tree.prove(i);
             verify_merkle_proof_to_cap(leaf, i, &tree.cap, &proof)?;
@@ -266,7 +488,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_trees() -> Result<()> {
+    fn test_merkle_trees_poseidon() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -274,6 +496,22 @@ mod tests {
         let log_n = 8;
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
+
+        verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merkle_trees_keccak() -> Result<()> {
+        const D: usize = 2;
+        type C = KeccakGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let log_n = 2;
+        let n = 1 << log_n;
+        let leaves = random_data::<F>(n, 7);
+        // let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
