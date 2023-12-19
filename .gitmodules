@@ -1,0 +1,5 @@
+[submodule "cryptography_cuda"]
+	path = cryptography_cuda
+	url = ./cryptography_cuda
+[submodule "./cryptography_cuda"]
+	branch = dev-dumi
