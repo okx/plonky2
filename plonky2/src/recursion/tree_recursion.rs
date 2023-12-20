@@ -488,12 +488,12 @@ mod tests {
         println!("{:?}", node_vd.circuit_digest.elements);
 
         // Verify that the proof correctly computes the input hash.
-        let leaf0_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(&hash0.elements);
-        let leaf1_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(&hash1.elements);
-        let leaf2_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(&hash2.elements);
+        let leaf0_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(&hash0.elements);
+        let leaf1_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(&hash1.elements);
+        let leaf2_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(&hash2.elements);
         assert_eq!(leaf0_input_hash.elements, leaf_proof0.public_inputs[0..4]);
         assert_eq!(leaf1_input_hash.elements, leaf_proof1.public_inputs[0..4]);
-        let node_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let node_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 leaf0_input_hash.elements.to_vec(),
                 leaf1_input_hash.elements.to_vec(),
@@ -502,7 +502,7 @@ mod tests {
             .as_slice(),
         );
         assert_eq!(node_input_hash.elements, node_proof.public_inputs[0..4]);
-        let root_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let root_input_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 node_input_hash.elements.to_vec(),
                 leaf2_input_hash.elements.to_vec(),
@@ -513,7 +513,7 @@ mod tests {
         assert_eq!(root_input_hash.elements, root_proof.public_inputs[0..4]);
 
         // Verify that the proof correctly computes the circuit hash.
-        let leaf0_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let leaf0_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 vd0.circuit_digest.elements.to_vec(),
                 leaf_vd0.circuit_digest.elements.to_vec(),
@@ -522,7 +522,7 @@ mod tests {
             .as_slice(),
         );
         assert_eq!(leaf0_circuit_hash.elements, leaf_proof0.public_inputs[4..8]);
-        let leaf1_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let leaf1_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 vd1.circuit_digest.elements.to_vec(),
                 leaf_vd1.circuit_digest.elements.to_vec(),
@@ -531,7 +531,7 @@ mod tests {
             .as_slice(),
         );
         assert_eq!(leaf1_circuit_hash.elements, leaf_proof1.public_inputs[4..8]);
-        let leaf2_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let leaf2_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 vd2.circuit_digest.elements.to_vec(),
                 leaf_vd2.circuit_digest.elements.to_vec(),
@@ -540,7 +540,7 @@ mod tests {
             .as_slice(),
         );
         assert_eq!(leaf2_circuit_hash.elements, leaf_proof2.public_inputs[4..8]);
-        let node_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let node_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 leaf0_circuit_hash.elements.to_vec(),
                 node_vd.circuit_digest.elements.to_vec(),
@@ -550,7 +550,7 @@ mod tests {
             .as_slice(),
         );
         assert_eq!(node_circuit_hash.elements, node_proof.public_inputs[4..8]);
-        let root_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation<F>>(
+        let root_circuit_hash = hash_n_to_hash_no_pad::<F, PoseidonPermutation>(
             [
                 node_circuit_hash.elements.to_vec(),
                 node_vd.circuit_digest.elements.to_vec(),

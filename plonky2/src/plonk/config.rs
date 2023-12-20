@@ -19,6 +19,7 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 pub enum HasherType {
     Keccak,
     Poseidon,
+    Other,
 }
 
 pub trait GenericHashOut<F: RichField>:
@@ -77,7 +78,6 @@ pub trait Hasher<F: RichField>: Sized + Clone + Debug + Eq + PartialEq {
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash;
 }
 
-/// Trait for algebraic hash functions, built from a permutation using the sponge construction.
 /// Trait for algebraic hash functions, built from a permutation using the sponge construction.
 pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
     // TODO: Adding a `const WIDTH: usize` here yields a compiler error down the line.

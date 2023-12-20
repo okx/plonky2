@@ -6,12 +6,11 @@ use itertools::Itertools;
 use serde::{Deserialize, Serialize};
 
 use crate::field::extension::Extendable;
-use crate::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField, NUM_HASH_OUT_ELTS};
-use crate::hash::hashing::{SPONGE_WIDTH};
+use crate::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
+use crate::hash::hashing::SPONGE_WIDTH;
 use crate::hash::merkle_tree::MerkleCap;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
-use crate::plonk::circuit_data::VerifierCircuitTarget;
 use crate::plonk::config::{AlgebraicHasher, Hasher};
 
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -31,7 +30,7 @@ impl<F: RichField, H: Hasher<F>> MerkleProof<F, H> {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct MerkleProofTarget {
     /// The Merkle digest of each sibling subtree, staying from the bottommost layer.
     pub siblings: Vec<HashOutTarget>,
@@ -121,7 +120,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     ) {
         let zero = self.zero();
         let mut state: HashOutTarget = self.hash_or_noop::<H>(leaf_data);
-        debug_assert_eq!(state.elements.len(), NUM_HASH_OUT_ELTS);
 
         for (&bit, &sibling) in leaf_index_bits.iter().zip(&proof.siblings) {
             let mut perm_inputs = [zero; SPONGE_WIDTH];
@@ -134,7 +132,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             };
         }
 
-        for i in 0..NUM_HASH_OUT_ELTS {
+        for i in 0..4 {
             let result = self.random_access(
                 cap_index,
                 merkle_cap.0.iter().map(|h| h.elements[i]).collect(),
@@ -144,7 +142,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 
     pub fn connect_hashes(&mut self, x: HashOutTarget, y: HashOutTarget) {
-        for i in 0..NUM_HASH_OUT_ELTS {
+        for i in 0..4 {
             self.connect(x.elements[i], y.elements[i]);
         }
     }
@@ -153,11 +151,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         for (h0, h1) in x.0.iter().zip_eq(&y.0) {
             self.connect_hashes(*h0, *h1);
         }
-    }
-
-    pub fn connect_verifier_data(&mut self, x: &VerifierCircuitTarget, y: &VerifierCircuitTarget) {
-        self.connect_merkle_caps(&x.constants_sigmas_cap, &y.constants_sigmas_cap);
-        self.connect_hashes(x.circuit_digest, y.circuit_digest);
     }
 }
 

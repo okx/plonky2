@@ -14,37 +14,35 @@ pub trait RichField: PrimeField64 + Poseidon {}
 
 impl RichField for GoldilocksField {}
 
-pub const NUM_HASH_OUT_ELTS: usize = 4;
-
 /// Represents a ~256 bit hash output.
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct HashOut<F: Field> {
-    pub elements: [F; NUM_HASH_OUT_ELTS],
+    pub elements: [F; 4],
 }
 
 impl<F: Field> HashOut<F> {
     pub const ZERO: Self = Self {
-        elements: [F::ZERO; NUM_HASH_OUT_ELTS],
+        elements: [F::ZERO; 4],
     };
 
     // TODO: Switch to a TryFrom impl.
     pub fn from_vec(elements: Vec<F>) -> Self {
-        debug_assert!(elements.len() == NUM_HASH_OUT_ELTS);
+        debug_assert!(elements.len() == 4);
         Self {
             elements: elements.try_into().unwrap(),
         }
     }
 
     pub fn from_partial(elements_in: &[F]) -> Self {
-        let mut elements = [F::ZERO; NUM_HASH_OUT_ELTS];
+        let mut elements = [F::ZERO; 4];
         elements[0..elements_in.len()].copy_from_slice(elements_in);
         Self { elements }
     }
 }
 
-impl<F: Field> From<[F; NUM_HASH_OUT_ELTS]> for HashOut<F> {
-    fn from(elements: [F; NUM_HASH_OUT_ELTS]) -> Self {
+impl<F: Field> From<[F; 4]> for HashOut<F> {
+    fn from(elements: [F; 4]) -> Self {
         Self { elements }
     }
 }
@@ -53,7 +51,7 @@ impl<F: Field> TryFrom<&[F]> for HashOut<F> {
     type Error = anyhow::Error;
 
     fn try_from(elements: &[F]) -> Result<Self, Self::Error> {
-        ensure!(elements.len() == NUM_HASH_OUT_ELTS);
+        ensure!(elements.len() == 4);
         Ok(Self {
             elements: elements.try_into().unwrap(),
         })
@@ -92,7 +90,7 @@ impl<F: RichField> GenericHashOut<F> for HashOut<F> {
         HashOut {
             elements: bytes
                 .chunks(8)
-                .take(NUM_HASH_OUT_ELTS)
+                .take(4)
                 .map(|x| F::from_canonical_u64(u64::from_le_bytes(x.try_into().unwrap())))
                 .collect::<Vec<_>>()
                 .try_into()
@@ -112,29 +110,29 @@ impl<F: Field> Default for HashOut<F> {
 }
 
 /// Represents a ~256 bit hash output.
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug)]
 pub struct HashOutTarget {
-    pub elements: [Target; NUM_HASH_OUT_ELTS],
+    pub elements: [Target; 4],
 }
 
 impl HashOutTarget {
     // TODO: Switch to a TryFrom impl.
     pub fn from_vec(elements: Vec<Target>) -> Self {
-        debug_assert!(elements.len() == NUM_HASH_OUT_ELTS);
+        debug_assert!(elements.len() == 4);
         Self {
             elements: elements.try_into().unwrap(),
         }
     }
 
     pub fn from_partial(elements_in: &[Target], zero: Target) -> Self {
-        let mut elements = [zero; NUM_HASH_OUT_ELTS];
+        let mut elements = [zero; 4];
         elements[0..elements_in.len()].copy_from_slice(elements_in);
         Self { elements }
     }
 }
 
-impl From<[Target; NUM_HASH_OUT_ELTS]> for HashOutTarget {
-    fn from(elements: [Target; NUM_HASH_OUT_ELTS]) -> Self {
+impl From<[Target; 4]> for HashOutTarget {
+    fn from(elements: [Target; 4]) -> Self {
         Self { elements }
     }
 }
@@ -143,14 +141,14 @@ impl TryFrom<&[Target]> for HashOutTarget {
     type Error = anyhow::Error;
 
     fn try_from(elements: &[Target]) -> Result<Self, Self::Error> {
-        ensure!(elements.len() == NUM_HASH_OUT_ELTS);
+        ensure!(elements.len() == 4);
         Ok(Self {
             elements: elements.try_into().unwrap(),
         })
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug)]
 pub struct MerkleCapTarget(pub Vec<HashOutTarget>);
 
 /// Hash consisting of a byte array.
