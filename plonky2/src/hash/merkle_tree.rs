@@ -9,6 +9,7 @@ use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
+// use std::time::{Instant};
 
 #[cfg(feature = "cuda")]
 use crate::{
@@ -177,27 +178,14 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        if H::HASHER_TYPE == HasherType::Poseidon {
-            // println!("Use Poseidon!");
-            fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                0,
-            );
-        } else {
-            // println!("Use Keccak!");
-            fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                1,
-            );
-        }
+        fill_init(
+            digests_count,
+            leaves_count,
+            caps_count,
+            leaf_size,
+            hash_size,
+            H::HASHER_TYPE as u64,
+        );
         fill_init_rounds(leaves_count, n_rounds);
 
         // copy data to C
@@ -212,21 +200,22 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
          */
         for leaf in leaves {
             for elem in leaf {
-                let val = &elem.to_canonical_u64(); 
+                let val = &elem.to_canonical_u64();
                 *pl = *val;
                 pl = pl.add(1);
             }
         }
 
+        // println!("Digest size {}, Leaves {}, Leaf size {}, Caps {}, Cap H {}", digests_count, leaves_count, leaf_size, caps_count, cap_height);
+
         // let now = Instant::now();
-        // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
-        // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
-        
+        // println!("Time to fill digests in C on CPU: {} ms", now.elapsed().as_millis());
+
         fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
-        
+
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
         println!("*** Digests");
@@ -239,17 +228,18 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         }
         pd = get_digests_ptr();
         */
-        
+
         // copy data from C
         /*
          * Note: std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE); does not
          * work in "release" mode: it produces sigsegv. Hence, we replaced it with
          * manual copy.
          */
+
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             // copy hash from pd to digests_buf
-            for i in 0..4 {
+            for i in 0..H::HASH_SIZE/8 {
                 parts.f2[i] = *pd;
                 pd = pd.add(1);
             }
@@ -260,7 +250,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         for cp in cap_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             // copy hash from pc to cap_buf
-            for i in 0..4 {
+            for i in 0..H::HASH_SIZE/8 {
                 parts.f2[i] = *pc;
                 pc = pc.add(1);
             }
@@ -284,8 +274,10 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     let leaf_size = leaves[0].len();
     // if the input is small, just do the hashing on CPU
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Other {
+        // println!("Run on CPU {:#?} Leaves {}, Leaf size {}", H::HASHER_TYPE, leaves.len(), leaf_size);
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
+        // println!("Run on GPU {:#?}, Leaves {}, Leaf size {}", H::HASHER_TYPE, leaves.len(), leaf_size);
         fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
 }
@@ -297,7 +289,10 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
+    println!("Run on CPU (no CUDA feature");
+    let now = Instant::now();
     fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    println!("Time: {} ms", now.elapsed().as_millis());
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
