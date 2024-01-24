@@ -54,7 +54,7 @@ fn constrain_channel_packed<P: PackedField>(
     yield_constr.constraint(filter * (channel.is_read - P::Scalar::from_bool(is_read)));
     yield_constr.constraint(filter * (channel.addr_context - lv.context));
     yield_constr.constraint(
-        filter * (channel.addr_segment - P::Scalar::from_canonical_u64(Segment::Stack as u64)),
+        filter * (channel.addr_segment - P::Scalar::from_canonical_usize(Segment::Stack.unscale())),
     );
     // Top of the stack is at `addr = lv.stack_len - 1`.
     let addr_virtual = lv.stack_len - P::ONES - offset;
@@ -94,7 +94,7 @@ fn constrain_channel_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     {
         let constr = builder.arithmetic_extension(
             F::ONE,
-            -F::from_canonical_u64(Segment::Stack as u64),
+            -F::from_canonical_usize(Segment::Stack.unscale()),
             filter,
             channel.addr_segment,
             filter,
@@ -138,11 +138,6 @@ fn eval_packed_dup<P: PackedField>(
 
     // Disable next top.
     yield_constr.constraint(filter * nv.mem_channels[0].used);
-
-    // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
-        yield_constr.constraint(filter * lv.mem_channels[i].used);
-    }
 }
 
 /// Circuit version of `eval_packed_dup`.
@@ -205,12 +200,6 @@ fn eval_ext_circuit_dup<F: RichField + Extendable<D>, const D: usize>(
         let constr = builder.mul_extension(filter, nv.mem_channels[0].used);
         yield_constr.constraint(builder, constr);
     }
-
-    // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
-        let constr = builder.mul_extension(filter, lv.mem_channels[i].used);
-        yield_constr.constraint(builder, constr);
-    }
 }
 
 /// Evaluates constraints for SWAP.
@@ -245,11 +234,6 @@ fn eval_packed_swap<P: PackedField>(
 
     // Disable next top.
     yield_constr.constraint(filter * nv.mem_channels[0].used);
-
-    // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
-        yield_constr.constraint(filter * lv.mem_channels[i].used);
-    }
 }
 
 /// Circuit version of `eval_packed_swap`.
@@ -314,16 +298,10 @@ fn eval_ext_circuit_swap<F: RichField + Extendable<D>, const D: usize>(
         let constr = builder.mul_extension(filter, nv.mem_channels[0].used);
         yield_constr.constraint(builder, constr);
     }
-
-    // Constrain unused channels.
-    for i in 3..NUM_GP_CHANNELS {
-        let constr = builder.mul_extension(filter, lv.mem_channels[i].used);
-        yield_constr.constraint(builder, constr);
-    }
 }
 
 /// Evaluates the constraints for the DUP and SWAP opcodes.
-pub fn eval_packed<P: PackedField>(
+pub(crate) fn eval_packed<P: PackedField>(
     lv: &CpuColumnsView<P>,
     nv: &CpuColumnsView<P>,
     yield_constr: &mut ConstraintConsumer<P>,
@@ -335,11 +313,14 @@ pub fn eval_packed<P: PackedField>(
 
     eval_packed_dup(n, lv, nv, yield_constr);
     eval_packed_swap(n, lv, nv, yield_constr);
+
+    // For both, disable the partial channel.
+    yield_constr.constraint(lv.op.dup_swap * lv.partial_channel.used);
 }
 
 /// Circuit version of `eval_packed`.
 /// Evaluates the constraints for the DUP and SWAP opcodes.
-pub fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
+pub(crate) fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
     lv: &CpuColumnsView<ExtensionTarget<D>>,
     nv: &CpuColumnsView<ExtensionTarget<D>>,
@@ -354,4 +335,10 @@ pub fn eval_ext_circuit<F: RichField + Extendable<D>, const D: usize>(
 
     eval_ext_circuit_dup(builder, n, lv, nv, yield_constr);
     eval_ext_circuit_swap(builder, n, lv, nv, yield_constr);
+
+    // For both, disable the partial channel.
+    {
+        let constr = builder.mul_extension(lv.op.dup_swap, lv.partial_channel.used);
+        yield_constr.constraint(builder, constr);
+    }
 }

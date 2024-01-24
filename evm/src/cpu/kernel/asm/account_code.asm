@@ -2,13 +2,13 @@ global sys_extcodehash:
     // stack: kexit_info, address
     SWAP1 %u256_to_addr
     // stack: address, kexit_info
-    DUP1 %insert_accessed_addresses
-    // stack: cold_access, address, kexit_info
+    SWAP1
+    DUP2 %insert_accessed_addresses
+    // stack: cold_access, kexit_info, address
     PUSH @GAS_COLDACCOUNTACCESS_MINUS_WARMACCESS
     MUL
     PUSH @GAS_WARMACCESS
     ADD
-    %stack (gas, address, kexit_info) -> (gas, kexit_info, address)
     %charge_gas
     // stack: kexit_info, address
 
@@ -48,8 +48,8 @@ retzero:
 %endmacro
 
 %macro extcodesize
-    %stack (address) -> (address, 0, @SEGMENT_KERNEL_ACCOUNT_CODE, %%after)
-    %jump(load_code)
+    %stack (address) -> (address, %%after)
+    %jump(extcodesize)
 %%after:
 %endmacro
 
@@ -57,13 +57,13 @@ global sys_extcodesize:
     // stack: kexit_info, address
     SWAP1 %u256_to_addr
     // stack: address, kexit_info
-    DUP1 %insert_accessed_addresses
-    // stack: cold_access, address, kexit_info
+    SWAP1
+    DUP2 %insert_accessed_addresses
+    // stack: cold_access, kexit_info, address
     PUSH @GAS_COLDACCOUNTACCESS_MINUS_WARMACCESS
     MUL
     PUSH @GAS_WARMACCESS
     ADD
-    %stack (gas, address, kexit_info) -> (gas, kexit_info, address)
     %charge_gas
     // stack: kexit_info, address
 
@@ -76,53 +76,61 @@ global sys_extcodesize:
 
 global extcodesize:
     // stack: address, retdest
-    %extcodesize
-    // stack: extcodesize(address), retdest
-    SWAP1 JUMP
+    %next_context_id
+    // stack: codesize_ctx, address, retdest
+    SWAP1
+    // stack: address, codesize_ctx, retdest
+    %jump(load_code)
 
-// Loads the code at `address` into memory, at the given context and segment, starting at offset 0.
+// Loads the code at `address` into memory, in the code segment of the given context, starting at offset 0.
 // Checks that the hash of the loaded code corresponds to the `codehash` in the state trie.
-// Pre stack: address, ctx, segment, retdest
+// Pre stack: address, ctx, retdest
 // Post stack: code_size
+//
+// NOTE: The provided `dest` **MUST** have a virtual address of 0.
 global load_code:
-    %stack (address, ctx, segment, retdest) -> (extcodehash, address, load_code_ctd, ctx, segment, retdest)
+    %stack (address, ctx, retdest) -> (extcodehash, address, load_code_ctd, ctx, retdest)
     JUMP
 load_code_ctd:
-    // stack: codehash, ctx, segment, retdest
+    // stack: codehash, ctx, retdest
     DUP1 ISZERO %jumpi(load_code_non_existent_account)
-    PROVER_INPUT(account_code::length)
-    // stack: code_size, codehash, ctx, segment, retdest
-    PUSH 0
-
-// Loop non-deterministically querying `code[i]` and storing it in `SEGMENT_KERNEL_ACCOUNT_CODE`
-// at offset `i`, until `i==code_size`.
-load_code_loop:
-    // stack: i, code_size, codehash, ctx, segment, retdest
-    DUP2 DUP2 EQ
-    // stack: i == code_size, i, code_size, codehash, ctx, segment, retdest
-    %jumpi(load_code_check)
-    PROVER_INPUT(account_code::get)
-    // stack: opcode, i, code_size, codehash, ctx, segment, retdest
-    DUP2
-    // stack: i, opcode, i, code_size, codehash, ctx, segment, retdest
-    DUP7 // segment
-    DUP7 // context
-    MSTORE_GENERAL
-    // stack: i, code_size, codehash, ctx, segment, retdest
-    %increment
-    // stack: i+1, code_size, codehash, ctx, segment, retdest
-    %jump(load_code_loop)
-
-// Check that the hash of the loaded code equals `codehash`.
-load_code_check:
-    // stack: i, code_size, codehash, ctx, segment, retdest
-    %stack (i, code_size, codehash, ctx, segment, retdest)
-        -> (ctx, segment, 0, code_size, codehash, retdest, code_size)
+    // Load the code non-deterministically in memory and return the length.
+    PROVER_INPUT(account_code)
+    %stack (code_size, codehash, ctx, retdest) -> (ctx, code_size, codehash, retdest, code_size)
+    // Check that the hash of the loaded code equals `codehash`.
+    // ctx == DST, as SEGMENT_CODE == offset == 0.
     KECCAK_GENERAL
     // stack: shouldbecodehash, codehash, retdest, code_size
     %assert_eq
+    // stack: retdest, code_size
     JUMP
 
 load_code_non_existent_account:
-    %stack (codehash, ctx, segment, retdest) -> (retdest, 0)
+    // Write 0 at address 0 for soundness: SEGMENT_CODE == 0, hence ctx == addr.
+    // stack: codehash, addr, retdest
+    %stack (codehash, addr, retdest) -> (0, addr, retdest, 0)
+    MSTORE_GENERAL
+    // stack: retdest, 0
+    JUMP
+
+// Identical to load_code, but adds 33 zeros after code_size for soundness reasons.
+// If the code ends with an incomplete PUSH, we must make sure that every subsequent read is 0,
+// accordingly to the Ethereum specs.
+// Pre stack: address, ctx, retdest
+// Post stack: code_size
+global load_code_padded:
+    %stack (address, ctx, retdest) -> (address, ctx, load_code_padded_ctd, ctx, retdest)
+    %jump(load_code)
+
+load_code_padded_ctd:
+    // SEGMENT_CODE == 0.
+    // stack: code_size, ctx, retdest
+    %stack (code_size, ctx, retdest) -> (ctx, code_size, 0, retdest, code_size)
+    ADD 
+    // stack: addr, 0, retdest, code_size
+    MSTORE_32BYTES_32
+    // stack: addr', retdest, code_size
+    PUSH 0
+    MSTORE_GENERAL
+    // stack: retdest, code_size
     JUMP

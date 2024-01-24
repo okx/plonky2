@@ -29,6 +29,7 @@ use crate::proof::{StarkOpeningSet, StarkProof, StarkProofWithPublicInputs};
 use crate::stark::Stark;
 use crate::vanishing_poly::eval_vanishing_poly;
 
+#[allow(clippy::useless_asref)]
 pub fn prove<F, C, S, const D: usize>(
     stark: S,
     config: &StarkConfig,
@@ -55,8 +56,6 @@ where
         timing,
         "compute trace commitment",
         PolynomialBatch::<F, C, D>::from_values(
-            // TODO: Cloning this isn't great; consider having `from_values` accept a reference,
-            // or having `compute_permutation_z_polys` read trace values from the `PolynomialBatch`.
             trace_poly_values.clone(),
             rate_bits,
             false,

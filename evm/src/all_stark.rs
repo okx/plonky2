@@ -1,5 +1,6 @@
 use std::iter;
 
+use itertools::Itertools;
 use plonky2::field::extension::Extendable;
 use plonky2::field::types::Field;
 use plonky2::hash::hash_types::RichField;
@@ -26,14 +27,14 @@ use crate::stark::Stark;
 /// Structure containing all STARKs and the cross-table lookups.
 #[derive(Clone)]
 pub struct AllStark<F: RichField + Extendable<D>, const D: usize> {
-    pub arithmetic_stark: ArithmeticStark<F, D>,
-    pub byte_packing_stark: BytePackingStark<F, D>,
-    pub cpu_stark: CpuStark<F, D>,
-    pub keccak_stark: KeccakStark<F, D>,
-    pub keccak_sponge_stark: KeccakSpongeStark<F, D>,
-    pub logic_stark: LogicStark<F, D>,
-    pub memory_stark: MemoryStark<F, D>,
-    pub cross_table_lookups: Vec<CrossTableLookup<F>>,
+    pub(crate) arithmetic_stark: ArithmeticStark<F, D>,
+    pub(crate) byte_packing_stark: BytePackingStark<F, D>,
+    pub(crate) cpu_stark: CpuStark<F, D>,
+    pub(crate) keccak_stark: KeccakStark<F, D>,
+    pub(crate) keccak_sponge_stark: KeccakSpongeStark<F, D>,
+    pub(crate) logic_stark: LogicStark<F, D>,
+    pub(crate) memory_stark: MemoryStark<F, D>,
+    pub(crate) cross_table_lookups: Vec<CrossTableLookup<F>>,
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> Default for AllStark<F, D> {
@@ -83,7 +84,7 @@ pub(crate) const NUM_TABLES: usize = Table::Memory as usize + 1;
 
 impl Table {
     /// Returns all STARK table indices.
-    pub(crate) fn all() -> [Self; NUM_TABLES] {
+    pub(crate) const fn all() -> [Self; NUM_TABLES] {
         [
             Self::Arithmetic,
             Self::BytePacking,
@@ -129,13 +130,28 @@ fn ctl_byte_packing<F: Field>() -> CrossTableLookup<F> {
         cpu_stark::ctl_data_byte_unpacking(),
         Some(cpu_stark::ctl_filter_byte_unpacking()),
     );
+    let cpu_push_packing_looking = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_byte_packing_push(),
+        Some(cpu_stark::ctl_filter_byte_packing_push()),
+    );
+    let cpu_jumptable_read_looking = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_jumptable_read(),
+        Some(cpu_stark::ctl_filter_syscall_exceptions()),
+    );
     let byte_packing_looked = TableWithColumns::new(
         Table::BytePacking,
         byte_packing_stark::ctl_looked_data(),
         Some(byte_packing_stark::ctl_looked_filter()),
     );
     CrossTableLookup::new(
-        vec![cpu_packing_looking, cpu_unpacking_looking],
+        vec![
+            cpu_packing_looking,
+            cpu_unpacking_looking,
+            cpu_push_packing_looking,
+            cpu_jumptable_read_looking,
+        ],
         byte_packing_looked,
     )
 }
@@ -223,6 +239,21 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
             Some(cpu_stark::ctl_filter_gp_memory(channel)),
         )
     });
+    let cpu_push_write_ops = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_partial_memory::<F>(),
+        Some(cpu_stark::ctl_filter_partial_memory()),
+    );
+    let cpu_set_context_write = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_memory_old_sp_write_set_context::<F>(),
+        Some(cpu_stark::ctl_filter_set_context()),
+    );
+    let cpu_set_context_read = TableWithColumns::new(
+        Table::Cpu,
+        cpu_stark::ctl_data_memory_new_sp_read_set_context::<F>(),
+        Some(cpu_stark::ctl_filter_set_context()),
+    );
     let keccak_sponge_reads = (0..KECCAK_RATE_BYTES).map(|i| {
         TableWithColumns::new(
             Table::KeccakSponge,
@@ -237,11 +268,17 @@ fn ctl_memory<F: Field>() -> CrossTableLookup<F> {
             Some(byte_packing_stark::ctl_looking_memory_filter(i)),
         )
     });
-    let all_lookers = iter::once(cpu_memory_code_read)
-        .chain(cpu_memory_gp_ops)
-        .chain(keccak_sponge_reads)
-        .chain(byte_packing_ops)
-        .collect();
+    let all_lookers = vec![
+        cpu_memory_code_read,
+        cpu_push_write_ops,
+        cpu_set_context_write,
+        cpu_set_context_read,
+    ]
+    .into_iter()
+    .chain(cpu_memory_gp_ops)
+    .chain(keccak_sponge_reads)
+    .chain(byte_packing_ops)
+    .collect();
     let memory_looked = TableWithColumns::new(
         Table::Memory,
         memory_stark::ctl_data(),
