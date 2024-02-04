@@ -77,10 +77,11 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let log_n =  log2_strict(degree);
 
         #[cfg(feature = "cuda")]
-        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
-            .expect("NUM_OF_GPUS should be set")
-            .parse()
-            .unwrap();
+        let num_gpus=1;
+        // let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+        //     .expect("NUM_OF_GPUS should be set")
+        //     .parse()
+        //     .unwrap();
         #[cfg(feature = "cuda")]
         let total_num_of_fft = values.len();
         #[cfg(feature = "cuda")]
@@ -177,10 +178,11 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let salt_size = if blinding { SALT_SIZE } else { 0 };
 
         #[cfg(feature = "cuda")]
-        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
-            .expect("NUM_OF_GPUS should be set")
-            .parse()
-            .unwrap();
+        let num_gpus =1;
+        // let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+        //     .expect("NUM_OF_GPUS should be set")
+        //     .parse()
+        //     .unwrap();
         #[cfg(feature = "cuda")]
         // println!("get num of gpus: {:?}", num_gpus);
 
