@@ -21,6 +21,8 @@ use crate::timed;
 use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
 use crate::util::{log2_strict, reverse_bits, reverse_index_bits_in_place, transpose};
+#[cfg(feature = "cuda")]
+use cryptography_cuda::{ntt_batch, intt_batch, types::*};
 
 /// Four (~64 bit) field elements gives ~128 bit security.
 pub const SALT_SIZE: usize = 4;
@@ -62,11 +64,60 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         timing: &mut TimingTree,
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Self {
+        #[cfg(not(feature = "cuda"))]
         let coeffs = timed!(
             timing,
             "IFFT",
             values.into_par_iter().map(|v| v.ifft()).collect::<Vec<_>>()
         );
+
+        #[cfg(feature = "cuda")]
+        let degree = values[0].len();
+        #[cfg(feature = "cuda")]
+        let log_n =  log2_strict(degree);
+
+        #[cfg(feature = "cuda")]
+        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            .expect("NUM_OF_GPUS should be set")
+            .parse()
+            .unwrap();
+        #[cfg(feature = "cuda")]
+        let total_num_of_fft = values.len();
+        #[cfg(feature = "cuda")]
+        let per_device_batch = total_num_of_fft.div_ceil(num_gpus);
+
+        #[cfg(feature = "cuda")]
+        let chunk_size = total_num_of_fft.div_ceil(num_gpus);
+        #[cfg(feature = "cuda")]
+        println!("invoking intt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}", total_num_of_fft, log_n, num_gpus);
+
+        #[cfg(feature = "cuda")]
+        let coeffs = values
+            .par_chunks(chunk_size)
+            .enumerate()
+            .flat_map(|(id, poly_chunk)| {
+                let mut polys_values: Vec<F> = poly_chunk
+                    .iter()
+                    .flat_map(|p| {
+                       p.values.clone()
+                    })
+                    .collect();
+                
+                intt_batch(
+                    id,
+                    &mut polys_values,
+                    NTTInputOutputOrder::NN,
+                    per_device_batch as u32,
+                    log_n,
+                );
+                // println!("after invoking ntt_batch, chunk_size: {:?}, polys_coeffs.len: {:?}", chunk_size, polys_coeffs.len());
+                polys_values
+                    .chunks(1<<log_n)
+                    .map(|buffer| PolynomialCoeffs::new(buffer.to_vec()))
+                    .collect::<Vec<PolynomialCoeffs<F>>>()
+            })
+           
+            .collect();
 
         Self::from_coeffs(
             coeffs,
@@ -118,10 +169,72 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Vec<Vec<F>> {
         let degree = polynomials[0].len();
+        // println!("degree: {:?}", degree);
+
+        let log_n =  log2_strict(degree) + rate_bits;
+        // println!("log_n: {:?}", log_n);
 
         // If blinding, salt with two random elements to each leaf vector.
         let salt_size = if blinding { SALT_SIZE } else { 0 };
 
+        #[cfg(feature = "cuda")]
+        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            .expect("NUM_OF_GPUS should be set")
+            .parse()
+            .unwrap();
+        #[cfg(feature = "cuda")]
+        // println!("get num of gpus: {:?}", num_gpus);
+
+        let total_num_of_fft = polynomials.len();
+        // println!("total_num_of_fft: {:?}", total_num_of_fft);
+        #[cfg(feature = "cuda")]
+        let per_device_batch = total_num_of_fft.div_ceil(num_gpus);
+
+        #[cfg(feature = "cuda")]
+        let chunk_size = total_num_of_fft.div_ceil(num_gpus);
+        // #[cfg(feature = "cuda")]
+        // println!("invoking ntt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}", total_num_of_fft, log_n, num_gpus);
+
+        #[cfg(feature = "cuda")]
+        return polynomials
+            .par_chunks(chunk_size)
+            .enumerate()
+            .flat_map(|(id, poly_chunk)| {
+                let mut polys_coeffs: Vec<F> = poly_chunk
+                    .iter()
+                    .flat_map(|p| {
+                        let p_extended = p.lde(rate_bits);
+                        let modified_poly: PolynomialCoeffs<F> = F::coset_shift()
+                            .powers()
+                            .zip(&p_extended.coeffs)
+                            .map(|(r, &c)| r * c)
+                            .collect::<Vec<_>>()
+                            .into();
+                        modified_poly.coeffs
+                    })
+                    .collect();
+                
+                ntt_batch(
+                    id,
+                    &mut polys_coeffs,
+                    NTTInputOutputOrder::NN,
+                    per_device_batch as u32,
+                    log_n,
+                );
+                // println!("after invoking ntt_batch, chunk_size: {:?}, polys_coeffs.len: {:?}", chunk_size, polys_coeffs.len());
+                polys_coeffs
+                    .chunks(1<<log_n)
+                    .map(|buffer| PolynomialValues::new(buffer.to_vec()).values)
+                    .collect::<Vec<Vec<F>>>()
+            })
+            .chain(
+                (0..salt_size)
+                    .into_par_iter()
+                    .map(|_| F::rand_vec(degree << rate_bits)),
+            )
+            .collect();
+
+        #[cfg(not(feature = "cuda"))]
         polynomials
             .par_iter()
             .map(|p| {
