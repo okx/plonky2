@@ -192,8 +192,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         #[cfg(feature = "cuda")]
         let chunk_size = total_num_of_fft.div_ceil(num_gpus);
-        // #[cfg(feature = "cuda")]
-        // println!("invoking ntt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}", total_num_of_fft, log_n, num_gpus);
+        #[cfg(feature = "cuda")]
+        println!("invoking ntt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}", total_num_of_fft, log_n, num_gpus);
 
         #[cfg(feature = "cuda")]
         return polynomials
