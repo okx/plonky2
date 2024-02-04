@@ -110,7 +110,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     per_device_batch as u32,
                     log_n,
                 );
-                // println!("after invoking ntt_batch, chunk_size: {:?}, polys_coeffs.len: {:?}", chunk_size, polys_coeffs.len());
                 polys_values
                     .chunks(1<<log_n)
                     .map(|buffer| PolynomialCoeffs::new(buffer.to_vec()))
@@ -221,7 +220,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     per_device_batch as u32,
                     log_n,
                 );
-                // println!("after invoking ntt_batch, chunk_size: {:?}, polys_coeffs.len: {:?}", chunk_size, polys_coeffs.len());
                 polys_coeffs
                     .chunks(1<<log_n)
                     .map(|buffer| PolynomialValues::new(buffer.to_vec()).values)
