@@ -92,7 +92,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         println!("invoking intt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}", total_num_of_fft, log_n, num_gpus);
 
         #[cfg(feature = "cuda")]
-        let coeffs = values
+        let coeffs =timed!(timing, "IFFT", values
             .par_chunks(chunk_size)
             .enumerate()
             .flat_map(|(id, poly_chunk)| {
@@ -117,7 +117,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     .collect::<Vec<PolynomialCoeffs<F>>>()
             })
            
-            .collect();
+            .collect());
 
         Self::from_coeffs(
             coeffs,
