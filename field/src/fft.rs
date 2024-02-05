@@ -75,8 +75,8 @@ fn fft_dispatch<F: Field>(
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
 ) {
-    // #[cfg(feature = "cuda")]
-    // return fft_dispatch_gpu(input, zero_factor, root_table);
+    #[cfg(feature = "cuda")]
+    return fft_dispatch_gpu(input, zero_factor, root_table);
     return fft_dispatch_cpu(input, zero_factor, root_table);
 }
 
