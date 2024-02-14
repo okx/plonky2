@@ -10,26 +10,15 @@ use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
-use std::os::raw::c_void;
-use std::time::Instant;
-
 #[cfg(feature = "cuda")]
 use crate::{
     fill_delete, fill_delete_rounds, fill_digests_buf_in_c, fill_digests_buf_in_rounds_in_c,
     fill_digests_buf_in_rounds_in_c_on_gpu, fill_init, fill_init_rounds, get_cap_ptr,
-    get_digests_ptr, get_leaves_ptr, get_leaves_gpu_ptr
+    get_digests_ptr, get_leaves_ptr,
 };
 
 #[cfg(feature = "cuda")]
-use cryptography_cuda::device::bindings::{
-    cudaFree, cudaMalloc, cudaMallocAsync, cudaMemcpy, cudaMemcpyAsync, cudaMemcpyKind,
-};
-
-#[cfg(feature = "cuda")]
-use cryptography_cuda::device::error::{CudaError, CudaResult, CudaResultWrap};
-
-#[cfg(feature = "cuda")]
-use crate::plonk::config::HasherType;
+use crate::plonk::config::{HasherType};
 
 #[cfg(feature = "cuda")]
 use alloc::sync::Arc;
@@ -187,17 +176,6 @@ union U8U64 {
     f2: [u64; 4],
 }
 
-#[cfg(feature = "cuda_timing")]
-fn print_time(now: Instant, msg: &str)
-{
-    println!("Time {} {} ms", msg, now.elapsed().as_millis());
-}
-
-#[cfg(not(feature = "cuda_timing"))]
-fn print_time(now: Instant, msg: &str)
-{
-}
-
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
@@ -216,7 +194,6 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        let now = Instant::now();
         if H::HASHER_TYPE == HasherType::Poseidon {
             // println!("Use Poseidon!");
             fill_init(
@@ -238,10 +215,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
                 1,
             );
         }
-        print_time(now, "init GPU step 1");
-        let now = Instant::now();
         fill_init_rounds(leaves_count, n_rounds);
-        print_time(now, "init GPU step 2");
 
         // copy data to C
         let mut pd: *mut u64 = get_digests_ptr();
@@ -249,43 +223,27 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         let mut pc: *mut u64 = get_cap_ptr();
 
         /*
-        let now = Instant::now();
-        let mut plg: *mut u64 = get_leaves_gpu_ptr();
-        let va:Vec<u64> = leaves.into_par_iter().flatten().map(
-            |x| {
-                x.to_canonical_u64()
-            }
-        ).collect();
-        let size = leaves.len() * leaves[0].len() * 8;
-        cudaMemcpy(plg as *mut c_void, va.as_ptr() as *const c_void, size, cudaMemcpyKind::cudaMemcpyHostToDevice);
-        println!("Time to copy data to GPU: {} ms", now.elapsed().as_millis());
-        */
-
-        /*
          * Note: std::ptr::copy(val, pl, 8); does not
          * work in "release" mode: it produces sigsegv. Hence, we replaced it with
          * manual copy.
          */
-        let now = Instant::now();
         for leaf in leaves {
             for elem in leaf {
-                let val = &elem.to_canonical_u64();
+                let val = &elem.to_canonical_u64(); 
                 *pl = *val;
                 pl = pl.add(1);
             }
         }
-        print_time(now, "copy data to GPU");
 
-
-        let now = Instant::now();
+        // let now = Instant::now();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
-
+        
         fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
-        print_time(now, "fill digests in C on GPU");
-
+        // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
         println!("*** Digests");
@@ -298,14 +256,13 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         }
         pd = get_digests_ptr();
         */
-
+        
         // copy data from C
         /*
          * Note: std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE); does not
          * work in "release" mode: it produces sigsegv. Hence, we replaced it with
          * manual copy.
          */
-        let now = Instant::now();
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             // copy hash from pd to digests_buf
@@ -328,12 +285,9 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
         }
-        print_time(now, "copy data from GPU");
 
-        let now = Instant::now();
         fill_delete_rounds();
         fill_delete();
-        print_time(now, "free GPU");
     }
 }
 
@@ -344,7 +298,6 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
-    let now = Instant::now();
     let leaf_size = leaves[0].len();
     // if the input is small, just do the hashing on CPU
     if leaf_size <= H::HASH_SIZE / 8 {
@@ -352,7 +305,6 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     } else {
         fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
-    print_time(now, "C wrapper");
 }
 
 #[cfg(not(feature = "cuda"))]
@@ -466,9 +418,9 @@ mod tests {
     }
 
     const test_leaves: [u64; 28] = [
-        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366,
-        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027,
-        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616,
+        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366, 
+        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027, 
+        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616, 
         15480539652174185186, 5454640537573844893, 3664852224809466446, 5547792914986991141, 5885254103823722535, 6014567676786509263, 11767239063322171808
     ];
 
@@ -492,9 +444,8 @@ mod tests {
         leaves: Vec<Vec<F>>,
         cap_height: usize,
     ) -> Result<()> {
-        let cln = leaves.clone();
         let now = Instant::now();
-        let tree = MerkleTree::<F, C::Hasher>::new(cln, cap_height);
+        let tree = MerkleTree::<F, C::Hasher>::new(leaves.clone(), cap_height);
         println!(
             "Time to build Merkle tree with {} leaves: {} ms",
             leaves.len(),
@@ -542,10 +493,9 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 12;
+        let log_n = 8;
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
-        // let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 

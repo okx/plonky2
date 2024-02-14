@@ -235,15 +235,6 @@ extern "C" {
     );
 }
 extern "C" {
-    pub fn fill_digests_buf_in_rounds_in_c_on_gpu_nouploads(
-        digests_buf_size: u64,
-        cap_buf_size: u64,
-        leaves_buf_size: u64,
-        leaf_size: u64,
-        cap_height: u64,
-    );
-}
-extern "C" {
     pub fn fill_digests_buf_linear_cpu(
         digests_buf_size: u64,
         cap_buf_size: u64,
@@ -288,13 +279,4 @@ extern "C" {
 }
 extern "C" {
     pub fn get_leaves_ptr() -> *mut u64;
-}
-extern "C" {
-    pub fn get_digests_gpu_ptr() -> *mut u64;
-}
-extern "C" {
-    pub fn get_cap_gpu_ptr() -> *mut u64;
-}
-extern "C" {
-    pub fn get_leaves_gpu_ptr() -> *mut u64;
 }

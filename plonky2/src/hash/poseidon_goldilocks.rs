@@ -446,7 +446,7 @@ mod poseidon12_mds {
 mod tests {
     use crate::field::goldilocks_field::GoldilocksField as F;
     use crate::field::types::{Field, PrimeField64};
-    use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors, check2};
+    use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors};
 
     #[test]
     fn test_vectors() {
@@ -489,11 +489,5 @@ mod tests {
     #[test]
     fn consistency() {
         check_consistency::<F>();
-    }
-
-    #[test]
-    fn mycheck2()
-    {
-        check2::<F>();
     }
 }

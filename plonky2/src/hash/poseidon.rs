@@ -789,19 +789,4 @@ pub(crate) mod test_helpers {
             assert_eq!(output[i], output_naive[i]);
         }
     }
-
-    pub(crate) fn check2<F: Field>()
-    where
-        F: Poseidon,
-    {
-        let mut input = [F::ZERO; SPONGE_WIDTH];
-        input[0] = F::from_canonical_u64(13421290117754017454);
-        input[1] = F::from_canonical_u64(7401888676587830362);
-        input[2] = F::from_canonical_u64(15316685236050041751);
-        input[3] = F::from_canonical_u64(13588825262671526271);
-        input[4] = F::from_canonical_u64(13421290117754017454);
-        input[5] = F::from_canonical_u64(7401888676587830362);
-        let output = F::poseidon(input);
-        println!("{:?}", output);
-    }
 }
