@@ -198,6 +198,20 @@ fn print_time(now: Instant, msg: &str)
 {
 }
 
+struct PtrWrapper {
+    ptr: *mut u64,
+}
+
+unsafe impl Send for PtrWrapper
+{
+
+}
+
+unsafe impl Sync for PtrWrapper
+{
+
+}
+
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
@@ -305,6 +319,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
          * work in "release" mode: it produces sigsegv. Hence, we replaced it with
          * manual copy.
          */
+        /*
         let now = Instant::now();
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
@@ -328,6 +343,46 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
         }
+        print_time(now, "copy data from GPU");
+        */
+
+        let now = Instant::now();
+        let mut pdg = Vec::with_capacity(digests_buf.len());
+        for i in 0..digests_buf.len() {
+            pdg.push(PtrWrapper { ptr: pd.add(4 * i)});
+        }
+        digests_buf.par_iter_mut().zip(pdg).for_each(
+          |(x, y)| {
+            let mut parts = U8U64 { f1: [0; 32] };
+            // copy hash from pd to digests_buf
+            let mut p = y.ptr;
+            for i in 0..4 {
+                parts.f2[i] = *p;
+                p = p.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            x.write(h);
+          }
+        );
+        let mut pcp = Vec::with_capacity(cap_buf.len());
+        for i in 0..cap_buf.len() {
+            pcp.push(PtrWrapper { ptr: pc.add(4 * i)});
+        }
+        cap_buf.par_iter_mut().zip(pcp).for_each(
+          |(x, y)| {
+            let mut parts = U8U64 { f1: [0; 32] };
+            // copy hash from pd to digests_buf
+            let mut p = y.ptr;
+            for i in 0..4 {
+                parts.f2[i] = *p;
+                p = p.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            x.write(h);
+          }
+        );
         print_time(now, "copy data from GPU");
 
         let now = Instant::now();
@@ -542,7 +597,7 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 12;
+        let log_n = 15;
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
         // let leaves = test_data(n, 7);
