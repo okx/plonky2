@@ -2,7 +2,10 @@ use alloc::format;
 use alloc::vec::Vec;
 
 #[cfg(feature = "cuda")]
-use cryptography_cuda::{intt_batch, ntt_batch, types::*};
+use cryptography_cuda::{
+    device::memory::HostOrDeviceSlice, device::stream::CudaStream, intt_batch, lde_batch,
+    ntt_batch, types::*,
+};
 use itertools::Itertools;
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;
@@ -105,14 +108,10 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 .flat_map(|(id, poly_chunk)| {
                     let mut polys_values: Vec<F> =
                         poly_chunk.iter().flat_map(|p| p.values.clone()).collect();
+                    let mut ntt_cfg = NTTConfig::default();
+                    ntt_cfg.batches = per_device_batch as u32;
 
-                    intt_batch(
-                        id,
-                        &mut polys_values,
-                        NTTInputOutputOrder::NN,
-                        per_device_batch as u32,
-                        log_n,
-                    );
+                    intt_batch(id, polys_values.as_mut_ptr(), log_n, ntt_cfg);
                     polys_values
                         .chunks(1 << log_n)
                         .map(|buffer| PolynomialCoeffs::new(buffer.to_vec()))
@@ -176,6 +175,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         // If blinding, salt with two random elements to each leaf vector.
         let salt_size = if blinding { SALT_SIZE } else { 0 };
+        println!("salt_size: {:?}", salt_size);
 
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let num_gpus: usize = std::env::var("NUM_OF_GPUS")
@@ -195,67 +195,61 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         #[cfg(all(feature = "cuda", feature = "batch"))]
         if (log_n > 19 && polynomials.len() > 80) {
             let start_lde = std::time::Instant::now();
-            println!(
-                "invoking ntt_batch, total_nums: {:?}, log_n: {:?}, num_gpus: {:?}",
-                total_num_of_fft, log_n, num_gpus
-            );
-            if num_gpus == 1 {
-                // let polynomials_mut = unsafe {polynomials as *mut PolynomialCoeffs<F>};
-                println!("F::coset_shift() {:?}", F::coset_shift());
-                let start_transform = std::time::Instant::now();
-                let inputs: Vec<Vec<F>> = 
-                polynomials
-                    .par_iter()
-                    .map(|p| {
-                        let p_extended = p.lde(rate_bits);
-                        let modified_poly: PolynomialCoeffs<F> = F::coset_shift()
-                            .powers() // TODO: coset_shift is Generator 7, powers could be pre computed
-                            .zip(&p_extended.coeffs)
-                            .map(|(r, &c)| r * c)
-                            .collect::<Vec<_>>()
-                            .into();
-                        modified_poly.coeffs
-                    })
-                    .collect();
-                println!("total time in transform: {:?}", start_transform.elapsed());
 
-                // TODO: allocate directly to GPU
-                // let output: Vec<F> =  inputs.par_iter().flat_map(|row| row.iter()).cloned().collect();
-                // println!("total time in transform2: {:?}", start_transform.elapsed());
-
-
-            }
+            let input_domain_size = 1 << log2_strict(degree);
+            let device_input_data: HostOrDeviceSlice<'_, F> =
+                HostOrDeviceSlice::cuda_malloc(input_domain_size * polynomials.len()).unwrap();
+            let device_input_data = std::sync::RwLock::new(device_input_data);
 
             let ret = polynomials
                 .par_chunks(chunk_size)
                 .enumerate()
                 .flat_map(|(id, poly_chunk)| {
-                    let mut polys_coeffs: Vec<F> = poly_chunk
-                        .iter()
-                        .flat_map(|p| {
-                            let p_extended = p.lde(rate_bits);
-                            let modified_poly: PolynomialCoeffs<F> = F::coset_shift()
-                                .powers()
-                                .zip(&p_extended.coeffs)
-                                .map(|(r, &c)| r * c)
-                                .collect::<Vec<_>>()
-                                .into();
-                            modified_poly.coeffs
-                        })
-                        .collect();
-                    let start = std::time::Instant::now();
-                    ntt_batch(
+                    println!(
+                        "invoking ntt_batch, device_id: {:?}, chunk_size: {:?}",
                         id,
-                        &mut polys_coeffs,
-                        NTTInputOutputOrder::NN,
-                        per_device_batch as u32,
-                        log_n,
+                        poly_chunk.len()
                     );
-                    println!("real ntt batch elapsed: {:?}", start.elapsed());
-                    polys_coeffs
-                        .chunks(1 << log_n)
-                        .map(|buffer| PolynomialValues::new(buffer.to_vec()).values)
-                        .collect::<Vec<Vec<F>>>()
+                    let start = std::time::Instant::now();
+                    poly_chunk.par_iter().enumerate().for_each(|(i, p)| {
+                        let _guard = device_input_data.read().unwrap();
+                        _guard.copy_from_host_offset(
+                            p.coeffs.as_slice(),
+                            input_domain_size * i,
+                            input_domain_size,
+                        );
+                    });
+
+                    println!("data transform elapsed: {:?}", start.elapsed());
+                    let mut cfg_lde = NTTConfig::default();
+                    cfg_lde.batches = per_device_batch as u32;
+                    cfg_lde.extension_rate_bits = rate_bits as u32;
+                    cfg_lde.are_inputs_on_device = true;
+                    cfg_lde.are_outputs_on_device = true;
+                    cfg_lde.with_coset = true;
+
+                    let mut device_output_data: HostOrDeviceSlice<'_, F> =
+                    HostOrDeviceSlice::cuda_malloc((1 << log_n) * per_device_batch).unwrap();
+
+                    let start = std::time::Instant::now();
+                    lde_batch::<F>(
+                        id,
+                        device_output_data.as_mut_ptr(),
+                        device_input_data.read().unwrap().as_ptr(),
+                        log2_strict(degree),
+                        cfg_lde,
+                    );
+                    println!("real lde_batch elapsed: {:?}", start.elapsed());
+                    let start = std::time::Instant::now();
+                    let nums: Vec<usize> = (0..polynomials.len()).collect();
+                    let r = nums.par_iter().map(|i| {
+                        let mut host_data: Vec<F> = vec![F::ZERO; 1 << log_n];
+                        device_output_data.copy_to_host_offset(host_data.as_mut_slice() , (1 << log_n) * i, 1 << log_n);
+                        PolynomialValues::new(host_data).values
+
+                    }).collect::<Vec<Vec<F>>>();
+                    println!("collect data from gpu used: {:?}", start.elapsed());
+                    r
                 })
                 .chain(
                     (0..salt_size)
@@ -267,7 +261,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             return ret;
         }
 
-        let start_non_batch = std::time::Instant::now();
         let ret = polynomials
             .par_iter()
             .map(|p| {
@@ -282,7 +275,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     .map(|_| F::rand_vec(degree << rate_bits)),
             )
             .collect();
-        println!("total non batch : {:?}, ", start_non_batch.elapsed());
         return ret;
     }
 
