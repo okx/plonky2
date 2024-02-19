@@ -347,6 +347,9 @@ where
         openings,
         opening_proof,
     };
+    #[cfg(feature="timing")]
+    timing.print();
+    
     Ok(ProofWithPublicInputs::<F, C, D> {
         proof,
         public_inputs,

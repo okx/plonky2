@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 #[cfg(feature = "cuda")]
-use cryptography_cuda::{iNTT, NTT, types::NTTInputOutputOrder};
+use cryptography_cuda::{intt, ntt, types::NTTInputOutputOrder};
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 use unroll::unroll_for_loops;
 
@@ -41,7 +41,7 @@ fn fft_dispatch_gpu<F: Field>(
     root_table: Option<&FftRootTable<F>>,
 ) {
     if F::CUDA_SUPPORT {
-        return NTT(0, input, NTTInputOutputOrder::NN);
+        return ntt(0, input, NTTInputOutputOrder::NN);
     } else {
         return fft_dispatch_cpu(input, zero_factor, root_table);
     }
@@ -55,14 +55,17 @@ fn fft_dispatch_cpu<F: Field>(
     if root_table.is_some() {
         return fft_classic(input, zero_factor.unwrap_or(0), root_table.unwrap());
     } else {
-        let pre_computed = F::pre_compute_fft_root_table(input.len());
-        if pre_computed.is_some() {
-            return fft_classic(input, zero_factor.unwrap_or(0), pre_computed.unwrap());
-        } else {
-            let computed = fft_root_table::<F>(input.len());
+        // let pre_computed = F::pre_compute_fft_root_table(input.len());
+        // if pre_computed.is_some() {
+        //     return fft_classic(input, zero_factor.unwrap_or(0), pre_computed.unwrap());
+        // } else {
+        //     let computed = fft_root_table::<F>(input.len());
 
-            return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
-        }
+        //     return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
+        // }
+        let computed = fft_root_table::<F>(input.len());
+
+        return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
     };
 }
 
