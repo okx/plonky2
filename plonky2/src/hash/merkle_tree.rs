@@ -18,7 +18,7 @@ use crate::{
 };
 
 #[cfg(feature = "cuda")]
-use crate::plonk::config::{HasherType};
+use crate::plonk::config::HasherType;
 
 #[cfg(feature = "cuda")]
 use alloc::sync::Arc;
@@ -229,7 +229,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
          */
         for leaf in leaves {
             for elem in leaf {
-                let val = &elem.to_canonical_u64(); 
+                let val = &elem.to_canonical_u64();
                 *pl = *val;
                 pl = pl.add(1);
             }
@@ -240,10 +240,10 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
-        
+
         fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
-        
+
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
         println!("*** Digests");
@@ -256,7 +256,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         }
         pd = get_digests_ptr();
         */
-        
+
         // copy data from C
         /*
          * Note: std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE); does not
@@ -418,9 +418,9 @@ mod tests {
     }
 
     const test_leaves: [u64; 28] = [
-        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366, 
-        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027, 
-        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616, 
+        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366,
+        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027,
+        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616,
         15480539652174185186, 5454640537573844893, 3664852224809466446, 5547792914986991141, 5885254103823722535, 6014567676786509263, 11767239063322171808
     ];
 
