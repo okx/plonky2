@@ -9,7 +9,7 @@ use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
-// use std::time::{Instant};
+// use std::time::Instant;
 
 #[cfg(feature = "cuda")]
 use crate::{
@@ -289,10 +289,10 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
-    println!("Run on CPU (no CUDA feature");
-    let now = Instant::now();
+    // println!("Run on CPU (no CUDA feature");
+    // let now = Instant::now();
     fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-    println!("Time: {} ms", now.elapsed().as_millis());
+    // println!("Time: {} ms", now.elapsed().as_millis());
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
