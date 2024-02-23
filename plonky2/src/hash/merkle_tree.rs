@@ -9,7 +9,24 @@ use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
-// use std::time::Instant;
+use std::time::Instant;
+
+#[cfg(feature = "cuda_timing")]
+fn print_time(now: Instant, msg: &str)
+{
+    // println!("Time {} {} ms", msg, now.elapsed().as_millis());
+}
+
+#[cfg(feature = "cuda_timing")]
+fn print_time_v1(now: Instant, msg: &str)
+{
+    println!("Time {} {} ms", msg, now.elapsed().as_millis());
+}
+
+#[cfg(not(feature = "cuda_timing"))]
+fn print_time(now: Instant, msg: &str)
+{
+}
 
 #[cfg(feature = "cuda")]
 use crate::{
@@ -177,6 +194,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
 
     let _lock = gpu_lock.lock().unwrap();
 
+    let now = Instant::now();
     unsafe {
         fill_init(
             digests_count,
@@ -186,7 +204,11 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             hash_size,
             H::HASHER_TYPE as u64,
         );
+        print_time(now, "init GPU step 1");
+        let now = Instant::now();
         fill_init_rounds(leaves_count, n_rounds);
+        print_time(now, "init GPU step 2");
+        let now = Instant::now();
 
         // copy data to C
         let mut pd: *mut u64 = get_digests_ptr();
@@ -205,16 +227,18 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
                 pl = pl.add(1);
             }
         }
+        print_time(now, "copy data to GPU");
 
         // println!("Digest size {}, Leaves {}, Leaf size {}, Caps {}, Cap H {}", digests_count, leaves_count, leaf_size, caps_count, cap_height);
 
-        // let now = Instant::now();
+        let now = Instant::now();
         // fill_digests_buf_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C on CPU: {} ms", now.elapsed().as_millis());
 
         fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        print_time(now, "fill digests on GPU");
 
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
@@ -235,7 +259,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
          * work in "release" mode: it produces sigsegv. Hence, we replaced it with
          * manual copy.
          */
-
+        let now = Instant::now();
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
             // copy hash from pd to digests_buf
@@ -258,9 +282,12 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
         }
+        print_time(now, "copy data from GPU");
 
+        let now = Instant::now();
         fill_delete_rounds();
         fill_delete();
+        print_time(now, "free GPU");
     }
 }
 
@@ -313,7 +340,9 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
+        let now = Instant::now();
         fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        print_time_v1(now, "fill digests on GPU");
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
