@@ -434,7 +434,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let idx = subtree_digest_size - (1 << num_layers) + (leaf_index % (1 << num_layers));
 
         let siblings = (0..num_layers)
-            .into_iter()
             .map(|i| {
                 // relative index
                 let rel_idx = (idx + 2 - (1 << i + 1)) / (1 << i);
