@@ -10,7 +10,8 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::Lit;
 
-fn main() {
+#[cfg(feature = "precompile")]
+fn build_precompile() {
     println!("cargo:rerun-if-changed=generated");
     let cargo_manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
@@ -20,6 +21,11 @@ fn main() {
 
     let token_stream = build_token_stream(&path).expect("build token stream error");
     _ = write_generated_file(token_stream, "goldilock_root_of_unity.rs");
+}
+fn main() {
+
+    #[cfg(feature = "precompile")]
+    build_precompile();
 }
 
 fn build_token_stream(path: &PathBuf) -> anyhow::Result<TokenStream> {

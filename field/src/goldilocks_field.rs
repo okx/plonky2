@@ -10,6 +10,8 @@ use serde::{Deserialize, Serialize};
 use crate::fft::FftRootTable;
 use crate::ops::Square;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
+
+#[cfg(feature = "precompile")]
 use crate::PRE_COMPUTE_ROOT_TABLES;
 
 const EPSILON: u64 = (1 << 32) - 1;
@@ -98,6 +100,7 @@ impl Field for GoldilocksField {
         Self::order()
     }
 
+    #[cfg(feature = "precompile")]
     fn pre_compute_fft_root_table(input_len: usize) -> Option<&'static FftRootTable<Self>> {
         let lg_n = log2_strict(input_len);
         PRE_COMPUTE_ROOT_TABLES.get(&lg_n)

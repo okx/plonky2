@@ -11,3 +11,5 @@ incremental = true
 [profile.bench]
 opt-level = 3
 
+[workspace.dependencies]
+cryptography_cuda = {path="./depends/cryptography_cuda"}
