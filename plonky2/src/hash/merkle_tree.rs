@@ -24,7 +24,12 @@ fn print_time_v1(now: Instant, msg: &str)
 }
 
 #[cfg(not(feature = "cuda_timing"))]
-fn print_time(now: Instant, msg: &str)
+fn print_time(_now: Instant, _msg: &str)
+{
+}
+
+#[cfg(not(feature = "cuda_timing"))]
+fn print_time_v1(_now: Instant, _msg: &str)
 {
 }
 
