@@ -14,6 +14,7 @@ use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
 
+use super::hash_types::HashOutTarget;
 use super::poseidon::PoseidonPermutation;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
@@ -216,15 +217,16 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
     {
         PoseidonHash::permute_swapped(inputs, swap, builder)
     }
-    // fn public_inputs_hash<const D: usize>(
-    //     inputs: Vec<Target>,
-    //     builder: &mut CircuitBuilder<F, D>,
-    // ) -> HashOutTarget
-    // where
-    //     F: RichField + Extendable<D>,
-    // {
-    //     PoseidonHash::public_inputs_hash(inputs, builder)
-    // }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        PoseidonHash::public_inputs_hash(inputs, builder)
+    }
 }
 
 /// Configuration using Poseidon over the Goldilocks field.

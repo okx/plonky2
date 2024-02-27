@@ -8,7 +8,7 @@ use serde::Serialize;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::goldilocks_field::GoldilocksField;
-use crate::hash::hash_types::{HashOut, RichField};
+use crate::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use crate::hash::hashing::PlonkyPermutation;
 use crate::hash::keccak::KeccakHash;
 use crate::hash::poseidon::PoseidonHash;
@@ -79,6 +79,14 @@ pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
         swap: BoolTarget,
         builder: &mut CircuitBuilder<F, D>,
     ) -> Self::AlgebraicPermutation
+    where
+        F: RichField + Extendable<D>;
+    
+     /// Circuit to calculate hash out for public inputs.
+     fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
     where
         F: RichField + Extendable<D>;
 }

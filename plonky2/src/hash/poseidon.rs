@@ -19,6 +19,8 @@ use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher};
 
+use super::hash_types::HashOutTarget;
+
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
 pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
@@ -748,6 +750,16 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
         Self::AlgebraicPermutation::new(
             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
         )
+    }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        HashOutTarget::from_vec(builder.hash_n_to_m_no_pad::<PoseidonHash>(inputs, 4))
     }
 }
 
