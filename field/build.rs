@@ -1,13 +1,19 @@
 use std::env;
 use std::fs::write;
-use std::path::{Path, PathBuf};
+use std::path::{Path};
+#[cfg(feature = "precompile")]
+use std::Path::{PathBuf};
 use std::process::Command;
+#[cfg(feature = "precompile")]
 use std::str::FromStr;
 
 use anyhow::Context;
+#[cfg(feature = "precompile")]
 use plonky2_util::pre_compute::{get_pre_compute_size, PRE_COMPUTE_END, PRE_COMPUTE_START};
 use proc_macro2::TokenStream;
+#[cfg(feature = "precompile")]
 use quote::quote;
+#[cfg(feature = "precompile")]
 use syn::Lit;
 
 #[cfg(feature = "precompile")]
@@ -28,6 +34,7 @@ fn main() {
     build_precompile();
 }
 
+#[cfg(feature = "precompile")]
 fn build_token_stream(path: &PathBuf) -> anyhow::Result<TokenStream> {
     let size = get_pre_compute_size(PRE_COMPUTE_START, PRE_COMPUTE_END);
     let token = syn::parse_str::<Lit>(&format!("{}", size)).unwrap();

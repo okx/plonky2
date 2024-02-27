@@ -36,11 +36,15 @@ mod prime_field_testing;
 #[cfg(feature = "precompile")]
 include!(concat!(env!("OUT_DIR"), "/goldilock_root_of_unity.rs"));
 
+#[cfg(feature = "precompile")]
 use std::collections::HashMap;
-
+#[cfg(feature = "precompile")]
 use fft::FftRootTable;
+#[cfg(feature = "precompile")]
 use goldilocks_field::GoldilocksField;
+#[cfg(feature = "precompile")]
 use lazy_static::lazy_static;
+#[cfg(feature = "precompile")]
 use plonky2_util::pre_compute::{PRE_COMPUTE_END, PRE_COMPUTE_START};
 
 #[cfg(feature = "precompile")]

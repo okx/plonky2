@@ -28,7 +28,7 @@ fn main() {
         }
         let poseidon_c_dir = Path::new(&dir).join("go-iden3-crypto");
         println!("poseidon_c_dir: {:?}", poseidon_c_dir);
-        if (poseidon_c_dir.exists()) {
+        if poseidon_c_dir.exists() {
             std::process::Command::new("sh")
                 .arg("-c")
                 .arg("rm")

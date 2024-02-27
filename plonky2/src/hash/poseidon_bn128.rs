@@ -1,13 +1,13 @@
 
+#![allow(non_upper_case_globals)]
+#![allow(non_camel_case_types)]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
-
-use core::mem::size_of;
 
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::Extendable;
 use crate::field::goldilocks_field::GoldilocksField;
 
-use crate::hash::hash_types::{HashOut, HashOutTarget, RichField};
+use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
 use crate::iop::target::{BoolTarget, Target};
@@ -60,7 +60,6 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
 
     fn permute(&mut self) {
         assert_eq!(SPONGE_WIDTH, 12);
-        let mut state_bytes = vec![0u8; SPONGE_WIDTH * size_of::<u64>()];
         unsafe {
             let h = permute(
                 self.state[0].to_canonical_u64(),
