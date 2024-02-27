@@ -35,6 +35,9 @@ pub trait Gate<F: RichField + Extendable<D>, const D: usize>: 'static + Send + S
     where
         Self: Sized;
 
+    fn export_circom_verification_code(&self) -> String;
+    fn export_solidity_verification_code(&self) -> String;
+
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension>;
 
     /// Like `eval_unfiltered`, but specialized for points in the base field.

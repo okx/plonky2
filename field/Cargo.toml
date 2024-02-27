@@ -10,7 +10,6 @@ edition = "2021"
 name = "fft"
 
 [dependencies]
-cryptography_cuda = {path="../cryptography_cuda", optional = true}
 anyhow = { version = "1.0.40", default-features = false }
 itertools = { version = "0.11.0", default-features = false, features = ["use_alloc"] }
 num = { version = "0.4", default-features = false, features = ["alloc", "rand"] }
@@ -20,6 +19,7 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 static_assertions = { version = "1.1.0", default-features = false }
 unroll = { version = "0.1.5", default-features = false }
 lazy_static = "1.4.0"
+cryptography_cuda ={path="../depends/cryptography_cuda", optional=true}
 
 [dev-dependencies]
 rand = "*"
@@ -32,5 +32,7 @@ proc-macro2 = "1"
 quote = "1"
 
 [features]
-default = []
+default = ["no_cuda"]
 cuda = ["cryptography_cuda"]
+precompile = []
+no_cuda = ["cryptography_cuda/no_cuda"]
