@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 fn mtbindings() {
     let pwd = env::current_dir().unwrap();
-    let libdir = pwd.parent().unwrap().join("cryptography_cuda/cuda/merkle");
+    let libdir = pwd.parent().unwrap().join("depends/cryptography_cuda/cuda/merkle");
     let header_file = libdir.join("merkle.h");
 
     // Tell cargo to look for shared libraries in the specified directory

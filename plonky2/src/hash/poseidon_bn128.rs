@@ -12,7 +12,7 @@ use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
-use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
+use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
 
 use super::poseidon::PoseidonPermutation;
 
@@ -151,6 +151,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonBN128Hash;
 impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
+    const HASHER_TYPE: HasherType = HasherType::PoseidonBN128;
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonBN128Permutation<F>;
@@ -241,10 +242,10 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use plonky2::field::types::Field;
-    use plonky2::plonk::config::{GenericConfig, Hasher, PoseidonGoldilocksConfig};
+    use plonky2_field::types::Field;
+    use crate::plonk::config::{GenericConfig, Hasher, PoseidonGoldilocksConfig};
 
-    use crate::config::PoseidonBN128Hash;
+    use crate::hash::poseidon_bn128::PoseidonBN128Hash;
 
     #[test]
     fn test_poseidon_bn128() -> Result<()> {

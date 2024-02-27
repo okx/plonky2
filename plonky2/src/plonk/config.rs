@@ -19,6 +19,7 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 pub enum HasherType {
     Poseidon = 0,
     Keccak = 1,
+    PoseidonBN128 = 2,
 }
 
 pub trait GenericHashOut<F: RichField>:
