@@ -10,4 +10,3 @@ incremental = true
 
 [profile.bench]
 opt-level = 3
-
