@@ -1,33 +1,34 @@
+#[cfg(feature = "cuda")]
+use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
+#[cfg(feature = "cuda")]
+use std::sync::Mutex;
 
+#[cfg(feature = "cuda")]
+use cryptography_cuda::device::memory::HostOrDeviceSlice;
+#[cfg(feature = "cuda")]
+use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
+use crate::util::log2_strict;
+use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::hash::hash_types::RichField;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher};
-use crate::util::log2_strict;
+
+#[cfg(feature = "cuda")]
+use std::os::raw::c_void;
+
+#[cfg(feature = "cuda")]
+use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
 
 #[cfg(feature = "cuda")]
 use crate::{
-    fill_delete, fill_delete_rounds, fill_digests_buf_in_c, fill_digests_buf_in_rounds_in_c,
-    fill_digests_buf_in_rounds_in_c_on_gpu, fill_init, fill_init_rounds, get_cap_ptr,
-    get_digests_ptr, get_leaves_ptr,
+    fill_delete, fill_delete_rounds, fill_digests_buf_in_rounds_in_c_on_gpu, fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr,
+    fill_init, fill_init_rounds, get_cap_ptr, get_digests_ptr, get_leaves_ptr,
 };
-
-#[cfg(feature = "cuda")]
-use crate::plonk::config::HasherType;
-
-#[cfg(feature = "cuda")]
-use alloc::sync::Arc;
-
-#[cfg(feature = "cuda")]
-use once_cell::sync::Lazy;
-
-#[cfg(feature = "cuda")]
-use std::sync::Mutex;
 
 #[cfg(feature = "cuda")]
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
@@ -177,7 +178,7 @@ union U8U64 {
 }
 
 #[cfg(feature = "cuda")]
-fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
@@ -194,27 +195,16 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        if H::HASHER_TYPE == HasherType::Poseidon {
-            // println!("Use Poseidon!");
-            fill_init(
+
+        fill_init(
                 digests_count,
                 leaves_count,
                 caps_count,
                 leaf_size,
                 hash_size,
-                0,
+                H::HASHER_TYPE as u64,
             );
-        } else {
-            // println!("Use Keccak!");
-            fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                1,
-            );
-        }
+
         fill_init_rounds(leaves_count, n_rounds);
 
         // copy data to C
@@ -241,7 +231,13 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         // fill_digests_buf_in_rounds_in_c(digests_count, caps_count, leaves_count, leaf_size, cap_height);
         // println!("Time to fill digests in C: {} ms", now.elapsed().as_millis());
 
-        fill_digests_buf_in_rounds_in_c_on_gpu(digests_count, caps_count, leaves_count, leaf_size, cap_height);
+        fill_digests_buf_in_rounds_in_c_on_gpu(
+            digests_count,
+            caps_count,
+            leaves_count,
+            leaf_size,
+            cap_height,
+        );
         // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
 
         // let mut pd : *mut u64 = get_digests_ptr();
@@ -289,6 +285,87 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         fill_delete_rounds();
         fill_delete();
     }
+}
+
+#[cfg(feature = "cuda")]
+fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[Vec<F>],
+    cap_height: usize,
+) {
+    let digests_count: u64 = digests_buf.len().try_into().unwrap();
+    let leaves_count: u64 = leaves.len().try_into().unwrap();
+    let caps_count: u64 = cap_buf.len().try_into().unwrap();
+    let cap_height: u64 = cap_height.try_into().unwrap();
+    let leaf_size: u64 = leaves[0].len().try_into().unwrap();
+
+    let _lock = gpu_lock.lock().unwrap();
+
+    let leaves_size = leaves.len() * leaves[0].len();
+    let digests_size = digests_buf.len() * NUM_HASH_OUT_ELTS;
+    let caps_size = cap_buf.len() * NUM_HASH_OUT_ELTS;
+    let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
+        HostOrDeviceSlice::cuda_malloc(0, leaves_size).unwrap();
+    let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
+        HostOrDeviceSlice::cuda_malloc(0, digests_size).unwrap();
+    let mut gpu_caps_buf: HostOrDeviceSlice<'_, F> =
+        HostOrDeviceSlice::cuda_malloc(0, caps_size).unwrap();
+
+    let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
+
+    let _ = gpu_leaves_buf.copy_from_host(leaves1.as_slice());
+
+    unsafe {
+        fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr(
+            gpu_digests_buf.as_mut_ptr() as *mut c_void,
+            gpu_caps_buf.as_mut_ptr() as *mut c_void,
+            gpu_leaves_buf.as_ptr() as *mut c_void,
+            digests_count,
+            caps_count,
+            leaves_count,
+            leaf_size,
+            cap_height,
+            H::HASHER_TYPE as u64
+        )
+    };
+
+    let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
+    let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
+    let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
+    let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
+
+    host_digests_buf
+        .par_chunks_exact(4)
+        .zip(digests_buf)
+        .for_each(|(x, y)| {
+            unsafe{
+            let mut parts = U8U64 { f1: [0; 32] };
+            parts.f2[0] = x[0].to_canonical_u64();
+            parts.f2[1] = x[1].to_canonical_u64();
+            parts.f2[2] = x[2].to_canonical_u64();
+            parts.f2[3] = x[3].to_canonical_u64();
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            y.write(h);
+            };
+        });
+
+    host_caps_buf
+        .par_chunks_exact(4)
+        .zip(cap_buf)
+        .for_each(|(x, y)| {
+            unsafe{
+            let mut parts = U8U64 { f1: [0; 32] };
+            parts.f2[0] = x[0].to_canonical_u64();
+            parts.f2[1] = x[1].to_canonical_u64();
+            parts.f2[2] = x[2].to_canonical_u64();
+            parts.f2[3] = x[3].to_canonical_u64();
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
+            y.write(h);
+            };
+        });
 }
 
 #[cfg(feature = "cuda")]
@@ -411,17 +488,41 @@ mod tests {
     use super::*;
     use crate::field::extension::Extendable;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig, KeccakGoldilocksConfig};
+    use crate::plonk::config::{GenericConfig, KeccakGoldilocksConfig, PoseidonGoldilocksConfig};
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
     }
 
     const test_leaves: [u64; 28] = [
-        12382199520291307008, 18193113598248284716, 17339479877015319223, 10837159358996869336, 9988531527727040483, 5682487500867411209, 13124187887292514366,
-        8395359103262935841, 1377884553022145855, 2370707998790318766, 3651132590097252162, 1141848076261006345, 12736915248278257710, 9898074228282442027,
-        10465118329878758468, 5866464242232862106, 15506463679657361352, 18404485636523119190, 15311871720566825080, 5967980567132965479, 14180845406393061616,
-        15480539652174185186, 5454640537573844893, 3664852224809466446, 5547792914986991141, 5885254103823722535, 6014567676786509263, 11767239063322171808
+        12382199520291307008,
+        18193113598248284716,
+        17339479877015319223,
+        10837159358996869336,
+        9988531527727040483,
+        5682487500867411209,
+        13124187887292514366,
+        8395359103262935841,
+        1377884553022145855,
+        2370707998790318766,
+        3651132590097252162,
+        1141848076261006345,
+        12736915248278257710,
+        9898074228282442027,
+        10465118329878758468,
+        5866464242232862106,
+        15506463679657361352,
+        18404485636523119190,
+        15311871720566825080,
+        5967980567132965479,
+        14180845406393061616,
+        15480539652174185186,
+        5454640537573844893,
+        3664852224809466446,
+        5547792914986991141,
+        5885254103823722535,
+        6014567676786509263,
+        11767239063322171808,
     ];
 
     fn test_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
@@ -429,7 +530,7 @@ mod tests {
         for i in 0..n {
             let mut elem = Vec::with_capacity(k);
             for j in 0..k {
-                elem.push(F::from_canonical_u64(test_leaves[i*k+j]));
+                elem.push(F::from_canonical_u64(test_leaves[i * k + j]));
             }
             data.push(elem);
         }
@@ -493,9 +594,10 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 8;
+        let log_n = 2;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        // let leaves = random_data::<F>(n, 7);
+        let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
@@ -510,8 +612,8 @@ mod tests {
 
         let log_n = 2;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
-        // let leaves = test_data(n, 7);
+        // let leaves = random_data::<F>(n, 7);
+        let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
