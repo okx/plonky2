@@ -1,6 +1,7 @@
 #[cfg(feature = "cuda")]
 use alloc::sync::Arc;
 use alloc::vec::Vec;
+use num::range;
 use core::mem::MaybeUninit;
 use core::slice;
 #[cfg(feature = "cuda")]
@@ -23,7 +24,7 @@ use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 #[cfg(feature = "cuda")]
 use crate::{
-    fill_delete, fill_digests_buf_linear_gpu, fill_init, get_cap_ptr, get_digests_ptr,
+    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init, get_cap_ptr, get_digests_ptr,
     get_leaves_ptr,
 };
 
@@ -263,14 +264,14 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
 
     unsafe {
         let now = Instant::now();
-            fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                H::HASHER_TYPE as u64,
-            );
+        fill_init(
+            digests_count,
+            leaves_count,
+            caps_count,
+            leaf_size,
+            hash_size,
+            H::HASHER_TYPE as u64,
+        );
         print_time(now, "fill init");
         let now = Instant::now();
 
@@ -282,7 +283,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         for leaf in leaves {
             for elem in leaf {
                 let val = &elem.to_canonical_u64();
-                std::ptr::copy(val, pl, 8);
+                *pl = *val;
                 pl = pl.add(1);
             }
         }
@@ -336,17 +337,25 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         // copy data from C
         for dg in digests_buf {
             let mut parts = U8U64 { f1: [0; 32] };
-            std::ptr::copy(pd, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
+            // copy hash from pd to digests_buf
+            for i in 0..4 {
+                parts.f2[i] = *pd;
+                pd = pd.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
             dg.write(h);
-            pd = pd.add(4);
         }
         for cp in cap_buf {
             let mut parts = U8U64 { f1: [0; 32] };
-            std::ptr::copy(pc, parts.f2.as_mut_ptr(), H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(&parts.f1);
+            // copy hash from pc to cap_buf
+            for i in 0..4 {
+                parts.f2[i] = *pc;
+                pc = pc.add(1);
+            }
+            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+            let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
-            pc = pc.add(4);
         }
 
         print_time(now, "copy results");
@@ -358,7 +367,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
 }
 
 #[cfg(feature = "cuda")]
-fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
@@ -407,7 +416,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let now = Instant::now();
 
     unsafe {
-        fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr(
+        fill_digests_buf_linear_gpu_with_gpu_ptr(
             gpu_digests_buf.as_mut_ptr() as *mut c_void,
             gpu_caps_buf.as_mut_ptr() as *mut c_void,
             gpu_leaves_buf.as_ptr() as *mut c_void,
@@ -475,10 +484,11 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
 
     let leaf_size = leaves[0].len();
     // if the input is small, just do the hashing on CPU
-    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
+    // || H::HASHER_TYPE == HasherType::Keccak
+    if leaf_size <= H::HASH_SIZE / 8 {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
-        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
 }
 
@@ -637,10 +647,9 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 14;
+        let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
-        // let leaves = test_data(n, 7);
+        let leaves = random_data::<F>(n, 7);        
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
@@ -653,10 +662,9 @@ mod tests {
         type C = KeccakGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 2;
+        let log_n = 12;
         let n = 1 << log_n;
-        // let leaves = random_data::<F>(n, 7);
-        let leaves = test_data(n, 7);
+        let leaves = random_data::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 

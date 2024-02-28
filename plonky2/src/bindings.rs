@@ -266,6 +266,19 @@ extern "C" {
     );
 }
 extern "C" {
+    pub fn fill_digests_buf_linear_gpu_with_gpu_ptr(
+        digests_buf_gpu_ptr: *mut ::std::os::raw::c_void,
+        cap_buf_gpu_ptr: *mut ::std::os::raw::c_void,
+        leaves_buf_gpu_ptr: *mut ::std::os::raw::c_void,
+        digests_buf_size: u64,
+        cap_buf_size: u64,
+        leaves_buf_size: u64,
+        leaf_size: u64,
+        cap_height: u64,
+        hash_type: u64,
+    );
+}
+extern "C" {
     pub fn fill_digests_buf_linear_multigpu(
         digests_buf_size: u64,
         cap_buf_size: u64,
