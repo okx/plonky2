@@ -28,8 +28,21 @@ use crate::{
     get_digests_ptr, get_leaves_ptr,
 };
 
+use std::time::Instant;
+
 #[cfg(feature = "cuda")]
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+
+#[cfg(feature = "cuda_timing")]
+fn print_time(now: Instant, msg: &str)
+{
+    println!("Time {} {} ms", msg, now.elapsed().as_millis());
+}
+
+#[cfg(not(feature = "cuda_timing"))]
+fn print_time(_now: Instant, _msg: &str)
+{
+}
 
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
 /// It can be used in place of the root to verify Merkle paths, which are `h` elements shorter.
@@ -193,6 +206,7 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
+        let now = Instant::now();
         fill_init(
             digests_count,
             leaves_count,
@@ -208,6 +222,8 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
         let mut pd: *mut u64 = get_digests_ptr();
         let mut pl: *mut u64 = get_leaves_ptr();
         let mut pc: *mut u64 = get_cap_ptr();
+        print_time(now, "Fill init");
+        let now = Instant::now();
 
         /*
          * Note: std::ptr::copy(val, pl, 8); does not
@@ -221,6 +237,8 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
                 pl = pl.add(1);
             }
         }
+        print_time(now, "copy to C");
+        let now = Instant::now();
 
         // let now = Instant::now();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
@@ -236,6 +254,8 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
             cap_height,
         );
         // println!("Time to fill digests in C on GPU: {} ms", now.elapsed().as_millis());
+        print_time(now, "kernel");
+        let now = Instant::now();
 
         // let mut pd : *mut u64 = get_digests_ptr();
         /*
@@ -278,9 +298,12 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
             let h: H::Hash = H::Hash::from_bytes(slice);
             cp.write(h);
         }
+        print_time(now, "copy results");
+        let now = Instant::now();
 
         fill_delete_rounds();
         fill_delete();
+        print_time(now, "free")
     }
 }
 
@@ -300,6 +323,8 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let leaf_size: u64 = leaves[0].len().try_into().unwrap();
 
     let leaves_size = leaves.len() * leaves[0].len();
+
+    let now = Instant::now();
 
     // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
     let digests_size = if digests_buf.len() == 0 {
@@ -321,10 +346,15 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
         HostOrDeviceSlice::cuda_malloc(0, digests_size).unwrap();
     let mut gpu_caps_buf: HostOrDeviceSlice<'_, F> =
         HostOrDeviceSlice::cuda_malloc(0, caps_size).unwrap();
+    print_time(now, "alloc gpu ds");
+    let now = Instant::now();
 
     let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
 
     let _ = gpu_leaves_buf.copy_from_host(leaves1.as_slice());
+
+    print_time(now, "data copy to gpu");
+    let now = Instant::now();
 
     unsafe {
         fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr(
@@ -339,6 +369,8 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             H::HASHER_TYPE as u64,
         )
     };
+    print_time(now, "kernel");
+    let now = Instant::now();
 
     if digests_buf.len() > 0 {
         let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
@@ -379,6 +411,7 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
                 };
             });
     }
+    print_time(now, "copy results");
 }
 
 #[cfg(feature = "cuda")]
@@ -395,7 +428,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
-        fill_digests_buf_c_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
 }
 
@@ -609,10 +642,10 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 2;
+        let log_n = 14;
         let n = 1 << log_n;
-        // let leaves = random_data::<F>(n, 7);
-        let leaves = test_data(n, 7);
+        let leaves = random_data::<F>(n, 7);
+        // let leaves = test_data(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
