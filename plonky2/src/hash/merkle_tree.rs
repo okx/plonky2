@@ -18,6 +18,22 @@ use crate::{
     get_leaves_ptr,
 };
 
+use std::time::Instant;
+
+#[cfg(feature = "cuda")]
+static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+
+#[cfg(feature = "cuda_timing")]
+fn print_time(now: Instant, msg: &str)
+{
+    println!("Time {} {} ms", msg, now.elapsed().as_millis());
+}
+
+#[cfg(not(feature = "cuda_timing"))]
+fn print_time(_now: Instant, _msg: &str)
+{
+}
+
 static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
@@ -221,7 +237,7 @@ union U8U64 {
     f2: [u64; 4],
 }
 
-fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
@@ -237,25 +253,17 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-        if H::HASHER_TYPE == HasherType::Poseidon {
+        let now = Instant::now();
             fill_init(
                 digests_count,
                 leaves_count,
                 caps_count,
                 leaf_size,
                 hash_size,
-                0,
+                H::HASHER_TYPE as u64,
             );
-        } else {
-            fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                1,
-            );
-        }
+        print_time(now, "fill init");
+        let now = Instant::now();
 
         // copy data to C
         let mut pd: *mut u64 = get_digests_ptr();
@@ -269,8 +277,9 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
                 pl = pl.add(1);
             }
         }
-
-        // let now = Instant::now();
+        print_time(now, "copy data to C");
+        let now = Instant::now();
+        
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         fill_digests_buf_linear_gpu(
             digests_count,
@@ -279,6 +288,9 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
             leaf_size,
             cap_height,
         );
+
+        print_time(now, "kernel");
+        let now = Instant::now();
 
         //println!(
         //    "Time to fill digests in C on GPU: {} ms",
@@ -328,7 +340,11 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
             pc = pc.add(4);
         }
 
+        print_time(now, "copy results");
+        let now = Instant::now();
+
         fill_delete();
+        print_time(now, "fill delete");        
     }
 }
 
@@ -358,7 +374,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             if H::HASHER_TYPE == HasherType::Keccak {
                 fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
             } else {
-                fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+                fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
             }
         }
 
