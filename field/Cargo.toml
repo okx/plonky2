@@ -6,6 +6,9 @@ license = "MIT OR Apache-2.0"
 authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>", "Jacqueline Nabaglo <j@nab.gl>", "Hamish Ivey-Law <hamish@ivey-law.name>"]
 edition = "2021"
 
+[[example]]
+name = "fft"
+
 [dependencies]
 anyhow = { version = "1.0.40", default-features = false }
 itertools = { version = "0.11.0", default-features = false, features = ["use_alloc"] }
@@ -15,3 +18,21 @@ rand = { version = "0.8.5", default-features = false, features = ["getrandom"] }
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive"] }
 static_assertions = { version = "1.1.0", default-features = false }
 unroll = { version = "0.1.5", default-features = false }
+lazy_static = "1.4.0"
+cryptography_cuda ={path="../depends/cryptography_cuda", optional=true}
+
+[dev-dependencies]
+rand = "*"
+
+[build-dependencies]
+plonky2_util = { path = "../util" }
+anyhow = { version = "1.0.40", default-features = false }
+syn = { version = "1", features = ["full"] }
+proc-macro2 = "1"
+quote = "1"
+
+[features]
+default = ["no_cuda"]
+cuda = ["cryptography_cuda"]
+precompile = []
+no_cuda = ["cryptography_cuda/no_cuda"]

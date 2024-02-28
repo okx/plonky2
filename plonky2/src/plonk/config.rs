@@ -15,10 +15,11 @@ use crate::hash::poseidon::PoseidonHash;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug, Copy, Clone)]
 pub enum HasherType {
-    Keccak,
-    Poseidon,
+    Poseidon = 0,
+    Keccak = 1,
+    PoseidonBN128 = 2,
 }
 
 pub trait GenericHashOut<F: RichField>:

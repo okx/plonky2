@@ -38,7 +38,7 @@ hashbrown = { version = "0.14.0" }
 tiny-keccak = "2.0.2"
 serde_json = "1.0"
 
-[target.'cfg(not(target_env = "msvc"))'.dependencies]
+[target.'cfg(not(target_os = "macos"))'.dependencies]
 jemallocator = "0.5.0"
 
 [dev-dependencies]

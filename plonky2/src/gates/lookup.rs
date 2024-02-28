@@ -99,6 +99,14 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for LookupGate {
         })
     }
 
+    fn export_circom_verification_code(&self) -> String {
+        unimplemented!()
+    }
+
+    fn export_solidity_verification_code(&self) -> String {
+        unimplemented!()
+    }
+
     fn eval_unfiltered(&self, _vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         // No main trace constraints for lookups.
         vec![]

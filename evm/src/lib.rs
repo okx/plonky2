@@ -35,10 +35,10 @@ pub mod witness;
 
 use eth_trie_utils::partial_trie::HashedPartialTrie;
 // Set up Jemalloc
-#[cfg(not(target_env = "msvc"))]
+#[cfg(not(target_os = "macos"))]
 use jemallocator::Jemalloc;
 
-#[cfg(not(target_env = "msvc"))]
+#[cfg(not(target_os = "macos"))]
 #[global_allocator]
 static GLOBAL: Jemalloc = Jemalloc;
 
