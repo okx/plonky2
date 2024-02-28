@@ -244,7 +244,6 @@ mod tests {
     use anyhow::Result;
     use plonky2_field::types::Field;
     use crate::plonk::config::{GenericConfig, Hasher, PoseidonGoldilocksConfig};
-
     use crate::hash::poseidon_bn128::PoseidonBN128Hash;
 
     #[test]
