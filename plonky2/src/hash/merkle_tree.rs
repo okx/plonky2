@@ -4,6 +4,8 @@ use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
 #[cfg(feature = "cuda")]
+use std::os::raw::c_void;
+#[cfg(feature = "cuda")]
 use std::sync::Mutex;
 
 #[cfg(feature = "cuda")]
@@ -13,21 +15,17 @@ use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
-use crate::util::log2_strict;
-use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::hash::hash_types::RichField;
-use crate::hash::merkle_proofs::MerkleProof;
-
-#[cfg(feature = "cuda")]
-use std::os::raw::c_void;
-
 #[cfg(feature = "cuda")]
 use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
-
+use crate::hash::merkle_proofs::MerkleProof;
+use crate::plonk::config::{GenericHashOut, Hasher};
+use crate::util::log2_strict;
 #[cfg(feature = "cuda")]
 use crate::{
-    fill_delete, fill_delete_rounds, fill_digests_buf_in_rounds_in_c_on_gpu, fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr,
-    fill_init, fill_init_rounds, get_cap_ptr, get_digests_ptr, get_leaves_ptr,
+    fill_delete, fill_delete_rounds, fill_digests_buf_in_rounds_in_c_on_gpu,
+    fill_digests_buf_in_rounds_in_c_on_gpu_with_gpu_ptr, fill_init, fill_init_rounds, get_cap_ptr,
+    get_digests_ptr, get_leaves_ptr,
 };
 
 #[cfg(feature = "cuda")]
@@ -195,15 +193,14 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
     let _lock = gpu_lock.lock().unwrap();
 
     unsafe {
-
         fill_init(
-                digests_count,
-                leaves_count,
-                caps_count,
-                leaf_size,
-                hash_size,
-                H::HASHER_TYPE as u64,
-            );
+            digests_count,
+            leaves_count,
+            caps_count,
+            leaf_size,
+            hash_size,
+            H::HASHER_TYPE as u64,
+        );
 
         fill_init_rounds(leaves_count, n_rounds);
 
@@ -294,17 +291,30 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
+    let _lock = gpu_lock.lock().unwrap();
+
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
     let leaves_count: u64 = leaves.len().try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
     let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaves[0].len().try_into().unwrap();
 
-    let _lock = gpu_lock.lock().unwrap();
-
     let leaves_size = leaves.len() * leaves[0].len();
-    let digests_size = digests_buf.len() * NUM_HASH_OUT_ELTS;
-    let caps_size = cap_buf.len() * NUM_HASH_OUT_ELTS;
+
+    // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
+    let digests_size = if digests_buf.len() == 0 {
+        NUM_HASH_OUT_ELTS
+    } else {
+        digests_buf.len() * NUM_HASH_OUT_ELTS
+    };
+    let caps_size = if cap_buf.len() == 0 {
+        NUM_HASH_OUT_ELTS
+    } else {
+        cap_buf.len() * NUM_HASH_OUT_ELTS
+    };
+
+    // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
+
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
         HostOrDeviceSlice::cuda_malloc(0, leaves_size).unwrap();
     let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
@@ -326,46 +336,49 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
             leaves_count,
             leaf_size,
             cap_height,
-            H::HASHER_TYPE as u64
+            H::HASHER_TYPE as u64,
         )
     };
 
-    let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
-    let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
-    let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
-    let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
+    if digests_buf.len() > 0 {
+        let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
+        let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
+        host_digests_buf
+            .par_chunks_exact(4)
+            .zip(digests_buf)
+            .for_each(|(x, y)| {
+                unsafe {
+                    let mut parts = U8U64 { f1: [0; 32] };
+                    parts.f2[0] = x[0].to_canonical_u64();
+                    parts.f2[1] = x[1].to_canonical_u64();
+                    parts.f2[2] = x[2].to_canonical_u64();
+                    parts.f2[3] = x[3].to_canonical_u64();
+                    let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+                    let h: H::Hash = H::Hash::from_bytes(slice);
+                    y.write(h);
+                };
+            });
+    }
 
-    host_digests_buf
-        .par_chunks_exact(4)
-        .zip(digests_buf)
-        .for_each(|(x, y)| {
-            unsafe{
-            let mut parts = U8U64 { f1: [0; 32] };
-            parts.f2[0] = x[0].to_canonical_u64();
-            parts.f2[1] = x[1].to_canonical_u64();
-            parts.f2[2] = x[2].to_canonical_u64();
-            parts.f2[3] = x[3].to_canonical_u64();
-            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(slice);
-            y.write(h);
-            };
-        });
-
-    host_caps_buf
-        .par_chunks_exact(4)
-        .zip(cap_buf)
-        .for_each(|(x, y)| {
-            unsafe{
-            let mut parts = U8U64 { f1: [0; 32] };
-            parts.f2[0] = x[0].to_canonical_u64();
-            parts.f2[1] = x[1].to_canonical_u64();
-            parts.f2[2] = x[2].to_canonical_u64();
-            parts.f2[3] = x[3].to_canonical_u64();
-            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(slice);
-            y.write(h);
-            };
-        });
+    if cap_buf.len() > 0 {
+        let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
+        let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
+        host_caps_buf
+            .par_chunks_exact(4)
+            .zip(cap_buf)
+            .for_each(|(x, y)| {
+                unsafe {
+                    let mut parts = U8U64 { f1: [0; 32] };
+                    parts.f2[0] = x[0].to_canonical_u64();
+                    parts.f2[1] = x[1].to_canonical_u64();
+                    parts.f2[2] = x[2].to_canonical_u64();
+                    parts.f2[3] = x[3].to_canonical_u64();
+                    let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+                    let h: H::Hash = H::Hash::from_bytes(slice);
+                    y.write(h);
+                };
+            });
+    }
 }
 
 #[cfg(feature = "cuda")]
@@ -375,12 +388,14 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaves: &[Vec<F>],
     cap_height: usize,
 ) {
+    use crate::plonk::config::HasherType;
+
     let leaf_size = leaves[0].len();
     // if the input is small, just do the hashing on CPU
-    if leaf_size <= H::HASH_SIZE / 8 {
+    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
-        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_c_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
 }
 
