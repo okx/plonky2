@@ -189,7 +189,7 @@ union U8U64 {
 }
 
 #[cfg(feature = "cuda")]
-fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
@@ -308,12 +308,12 @@ fn fill_digests_buf_c_v1<F: RichField, H: Hasher<F>>(
 }
 
 #[cfg(feature = "cuda")]
-fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &[Vec<F>],
     cap_height: usize,
-) {
+) {    
     let _lock = gpu_lock.lock().unwrap();
 
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
@@ -350,8 +350,17 @@ fn fill_digests_buf_c<F: RichField, H: Hasher<F>>(
     let now = Instant::now();
 
     let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
-
     let _ = gpu_leaves_buf.copy_from_host(leaves1.as_slice());
+    
+    // The code below copies in parallel to offsets - however, it is 2X slower than the code above
+    /*
+    let ls = leaves[0].len();
+    leaves.into_par_iter().enumerate().for_each(
+      |(i, x)| {
+        let _ = gpu_leaves_buf.copy_from_host_offset(x.as_slice(), i * ls, ls);
+      }  
+    );
+    */
 
     print_time(now, "data copy to gpu");
     let now = Instant::now();
@@ -428,7 +437,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
-        fill_digests_buf_c::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     }
 }
 
@@ -642,12 +651,12 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 14;
+        let log_n = 12;
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
-        // let leaves = test_data(n, 7);
-
-        verify_all_leaves::<F, C, D>(leaves, 1)?;
+        // let leaves = test_data(n, 7);        
+        
+        verify_all_leaves::<F, C, D>(leaves, 1)?;       
 
         Ok(())
     }
@@ -658,11 +667,11 @@ mod tests {
         type C = KeccakGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let log_n = 2;
+        let log_n = 14;
         let n = 1 << log_n;
-        // let leaves = random_data::<F>(n, 7);
-        let leaves = test_data(n, 7);
-
+        let leaves = random_data::<F>(n, 7);
+        // let leaves = test_data(n, 7);
+        
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
         Ok(())
