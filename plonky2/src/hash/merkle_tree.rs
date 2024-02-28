@@ -484,8 +484,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
 
     let leaf_size = leaves[0].len();
     // if the input is small, just do the hashing on CPU
-    // || H::HASHER_TYPE == HasherType::Keccak
-    if leaf_size <= H::HASH_SIZE / 8 {
+    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
         fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
