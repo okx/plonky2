@@ -589,6 +589,7 @@ mod tests {
     use super::*;
     use crate::field::extension::Extendable;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
+    use crate::hash::poseidon_bn128::PoseidonBN128GoldilocksConfig;
     use crate::plonk::config::{GenericConfig, KeccakGoldilocksConfig, PoseidonGoldilocksConfig};
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
@@ -659,6 +660,21 @@ mod tests {
     fn test_merkle_trees_keccak() -> Result<()> {
         const D: usize = 2;
         type C = KeccakGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let log_n = 12;
+        let n = 1 << log_n;
+        let leaves = random_data::<F>(n, 7);
+
+        verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merkle_trees_poseidonbn128() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonBN128GoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
         let log_n = 12;
