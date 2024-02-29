@@ -312,6 +312,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                         cfg_trans.batches = per_device_batch as u32;
                         cfg_trans.are_inputs_on_device = true;
                         cfg_trans.are_outputs_on_device = true;
+
+                        let start = std::time::Instant::now();
                         transpose_rev_batch(
                             id as i32, 
                             device_transpose_data.as_mut_ptr(), 
@@ -319,6 +321,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                             log_n, 
                             cfg_trans
                         );
+
+                        println!("real transpose_rev_batch elapsed: {:?}", start.elapsed());
 
                         let start = std::time::Instant::now();
                         let nums: Vec<usize> = (0..(1<<log_n)).collect();
