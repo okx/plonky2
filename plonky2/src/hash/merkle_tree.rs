@@ -23,8 +23,8 @@ use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 #[cfg(feature = "cuda")]
-use crate::{
-    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init, get_cap_ptr, get_digests_ptr,
+use cryptography_cuda::merkle::bindings::{
+    fill_delete, fill_digests_buf_linear_cpu, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init, get_cap_ptr, get_digests_ptr,
     get_leaves_ptr,
 };
 
@@ -152,7 +152,6 @@ fn fill_subtree<F: RichField, H: Hasher<F>>(
     log2_strict(leaves.len());
     for level_log in range(1, log2_strict(leaves.len())).rev() {
         let level_size = 1 << level_log;
-        // println!("Size {} Last index {}", level_size, last_index);
         let (_, digests_slice) = digests_buf.split_at_mut(last_index - level_size);
         let (digests_slice, next_digests) = digests_slice.split_at_mut(level_size);
 
@@ -167,7 +166,6 @@ fn fill_subtree<F: RichField, H: Hasher<F>>(
                     let left_digest = next_digests[left_idx].assume_init();
                     let right_digest = next_digests[right_idx].assume_init();
                     digest.write(H::two_to_one(left_digest, right_digest));
-                    // println!("Size {} Index {} {:?} {:?}", level_size, idx, left_digest, right_digest);
                 }
             });
         last_index -= level_size;
@@ -289,7 +287,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         }
         print_time(now, "copy data to C");
         let now = Instant::now();
-        
+
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
         fill_digests_buf_linear_gpu(
             digests_count,
@@ -301,11 +299,6 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
 
         print_time(now, "kernel");
         let now = Instant::now();
-
-        //println!(
-        //    "Time to fill digests in C on GPU: {} ms",
-        //    now.elapsed().as_millis()
-        //);
 
         // TODO - debug code - to remove in future
         // let mut pd : *mut u64 = get_digests_ptr();
@@ -362,7 +355,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         let now = Instant::now();
 
         fill_delete();
-        print_time(now, "fill delete");        
+        print_time(now, "fill delete");
     }
 }
 
@@ -408,7 +401,25 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     print_time(now, "alloc gpu ds");
     let now = Instant::now();
 
-    let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
+    // Note: flatten() is very slow, so we use a naive nested for loop
+    // let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
+
+    // v1: use 2 for loops - better than flatten()
+    let mut leaves1 = Vec::with_capacity(leaves.len() * leaves[0].len());
+    for leaf in leaves {
+        for el in leaf {
+            leaves1.push(el.clone());
+        }
+    }
+    /*
+    // v2: use par chunks - same performance
+    let mut leaves1 = vec![F::ZERO; leaves.len() * leaves[0].len()];
+    leaves1.par_chunks_exact_mut(leaves[0].len()).enumerate().for_each(
+        |(i, c)| {
+            c.copy_from_slice(leaves[i].as_slice());
+        }
+    );
+    */
 
     let _ = gpu_leaves_buf.copy_from_host(leaves1.as_slice());
 
@@ -483,7 +494,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     use crate::plonk::config::HasherType;
 
     let leaf_size = leaves[0].len();
-    // if the input is small, just do the hashing on CPU
+    // if the input is small or if it Keccak hashing, just do the hashing on CPU
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
     } else {
@@ -649,7 +660,7 @@ mod tests {
 
         let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);        
+        let leaves = random_data::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
