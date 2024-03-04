@@ -285,6 +285,21 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
                 pl = pl.add(1);
             }
         }
+
+        /*
+        let lc = leaves.len();
+        leaves.into_iter().enumerate().for_each(
+            |(i, leaf)| {
+                let mut p = pl;
+                p = p.add(i);
+                for elem in leaf {
+                    let val = &elem.to_canonical_u64();
+                    *p = *val;
+                    p = p.add(lc);
+                }
+            }
+        );
+        */
         print_time(now, "copy data to C");
         let now = Instant::now();
 
@@ -530,7 +545,9 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
+        // let now = Instant::now();
         fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        // println!("Time taken: {:?}", now.elapsed());
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
@@ -601,7 +618,7 @@ mod tests {
     use crate::field::extension::Extendable;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
     use crate::hash::poseidon_bn128::PoseidonBN128GoldilocksConfig;
-    use crate::plonk::config::{GenericConfig, KeccakGoldilocksConfig, PoseidonGoldilocksConfig};
+    use crate::plonk::config::{GenericConfig, KeccakGoldilocksConfig, Poseidon2GoldilocksConfig, PoseidonGoldilocksConfig};
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
@@ -653,9 +670,29 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_trees_poseidon() -> Result<()> {
+    fn test_merkle_trees_poseidon_g64() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        // GPU warmup
+        #[cfg(feature = "cuda")]
+        let _x: HostOrDeviceSlice<'_, F> = HostOrDeviceSlice::cuda_malloc(0, 64)
+            .unwrap();
+
+        let log_n = 12;
+        let n = 1 << log_n;
+        let leaves = random_data::<F>(n, 7);
+
+        verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_merkle_trees_poseidon2_g64() -> Result<()> {
+        const D: usize = 2;
+        type C = Poseidon2GoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
         let log_n = 12;
@@ -683,7 +720,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merkle_trees_poseidonbn128() -> Result<()> {
+    fn test_merkle_trees_poseidon_bn128() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonBN128GoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
