@@ -15,6 +15,8 @@ use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
 
+#[cfg(target_feature = "avx2")]
+use super::arch::x86_64::poseidon2_goldilocks_avx2::{add_rc_avx, sbox_avx, matmul_internal_avx, permute_mut_avx};
 use super::hash_types::NUM_HASH_OUT_ELTS;
 
 pub const SPONGE_RATE: usize = 8;
@@ -78,11 +80,11 @@ extern crate alloc;
 // [ 1 1 4 6 ].
 // The permutation calculation is based on Appendix B from the Poseidon2 paper.
 #[derive(Copy, Clone, Default)]
-pub struct Poseidon2MEMatrix<const WIDTH: usize, const D: u64>;
+pub struct Poseidon2MEMatrix;
 
 // Multiply a 4-element vector x by M_4, in place.
 // This uses the formula from the start of Appendix B, with multiplications unrolled into additions.
-fn apply_m_4<F>(x: &mut [F])
+pub fn apply_m_4<F>(x: &mut [F])
 where
     F: RichField,
 {
@@ -109,14 +111,15 @@ trait P2Permutation<T: Clone>: Clone + Sync {
     fn permute_mut(&self, input: &mut T);
 }
 
-impl<F, const WIDTH: usize, const D: u64> P2Permutation<[F; WIDTH]> for Poseidon2MEMatrix<WIDTH, D>
+impl<F> P2Permutation<[F; SPONGE_WIDTH]> for Poseidon2MEMatrix
 where
     F: RichField,
 {
-    fn permute_mut(&self, state: &mut [F; WIDTH]) {
+    #[cfg(not(target_feature = "avx2"))]
+    fn permute_mut(&self, state: &mut [F; SPONGE_WIDTH]) {
         // First, we apply M_4 to each consecutive four elements of the state.
         // In Appendix B's terminology, this replaces each x_i with x_i'.
-        for i in (0..WIDTH).step_by(4) {
+        for i in (0..SPONGE_WIDTH).step_by(4) {
             apply_m_4(&mut state[i..i + 4]);
         }
 
@@ -124,7 +127,7 @@ where
 
         // We first precompute the four sums of every four elements.
         let sums: [F; 4] = core::array::from_fn(|k| {
-            (0..WIDTH)
+            (0..SPONGE_WIDTH)
                 .step_by(4)
                 .map(|j| state[j + k].clone())
                 .sum::<F>()
@@ -132,29 +135,41 @@ where
 
         // The formula for each y_i involves 2x_i' term and x_j' terms for each j that equals i mod 4.
         // In other words, we can add a single copy of x_i' to the appropriate one of our precomputed sums
-        for i in 0..WIDTH {
+        for i in 0..SPONGE_WIDTH {
             state[i] += sums[i % 4].clone();
         }
+    }
+
+    #[cfg(target_feature = "avx2")]
+    fn permute_mut(&self, state: &mut [F; SPONGE_WIDTH]) {
+        permute_mut_avx(state);
     }
 }
 
 #[derive(Debug, Clone, Default)]
 struct DiffusionMatrixGoldilocks;
 
-pub fn matmul_internal<F: RichField, const WIDTH: usize>(
-    state: &mut [F; WIDTH],
-    mat_internal_diag_m_1: [u64; WIDTH],
+pub fn matmul_internal<F: RichField>(
+    state: &mut [F; SPONGE_WIDTH],
+    mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
 ) {
+    // if no AVX
+    #[cfg(not(target_feature = "avx2"))]
     let sum: F = state.iter().cloned().sum();
-    for i in 0..WIDTH {
+    // if no AVX
+    #[cfg(not(target_feature = "avx2"))]
+    for i in 0..SPONGE_WIDTH {
         state[i] *= F::from_canonical_u64(mat_internal_diag_m_1[i]);
         state[i] += sum.clone();
     }
+    // if AVX
+    #[cfg(target_feature = "avx2")]
+    matmul_internal_avx(state, mat_internal_diag_m_1);
 }
 
 impl<F: RichField> P2Permutation<[F; 12]> for DiffusionMatrixGoldilocks {
     fn permute_mut(&self, state: &mut [F; 12]) {
-        matmul_internal::<F, 12>(state, MATRIX_DIAG_12_GOLDILOCKS);
+        matmul_internal::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
     }
 }
 
@@ -165,29 +180,18 @@ pub trait Poseidon2: RichField {
     const ROUNDS_P: usize = 22;
 
     #[inline]
-    fn matmul_internal<F>(
-        state: &mut [F; SPONGE_WIDTH],
-        mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
-    )
-    where
-        F: RichField,
-    {
-        let sum: F = state.iter().cloned().sum();
-        for i in 0..SPONGE_WIDTH {
-            state[i] *= F::from_canonical_u64(mat_internal_diag_m_1[i]);
-            state[i] += sum.clone();
-        }
-    }
-
-    #[inline]
     fn add_rc<F>(state: &mut [F; SPONGE_WIDTH], rc: &[u64; SPONGE_WIDTH])
     where
         F: RichField,
     {
-        state
-            .iter_mut()
-            .zip(rc)
-            .for_each(|(a, b)| *a += F::from_canonical_u64(*b));
+        // if no AVX
+        #[cfg(not(target_feature = "avx2"))]
+        for i in 0..SPONGE_WIDTH {
+            state[i] = state[i] + F::from_canonical_u64(rc[i]);
+        }
+        // if AVX
+        #[cfg(target_feature = "avx2")]
+        add_rc_avx(state, rc);
     }
 
     #[inline]
@@ -195,7 +199,12 @@ pub trait Poseidon2: RichField {
     where
         F: RichField,
     {
-        input.exp_u64(7)
+        // this is inefficient, so we change to the one below
+        // input.exp_u64(7)
+        let x2 = (*input) * (*input);
+        let x4 = x2 * x2;
+        let x3 = x2 * (*input);
+        x3 * x4
     }
 
     #[inline]
@@ -203,12 +212,19 @@ pub trait Poseidon2: RichField {
     where
         F: RichField,
     {
-        state.iter_mut().for_each(|a| *a = Self::sbox_p(a));
+        // if no AVX
+        #[cfg(not(target_feature = "avx2"))]
+        for i in 0..SPONGE_WIDTH {
+            state[i] = Self::sbox_p(&state[i]);
+        }
+        // if AVX
+        #[cfg(target_feature = "avx2")]
+        sbox_avx(state);
     }
 
     #[inline]
     fn poseidon2(state: &mut [Self; SPONGE_WIDTH]) {
-        let external_linear_layer = Poseidon2MEMatrix::<SPONGE_WIDTH, 7>;
+        let external_linear_layer = Poseidon2MEMatrix;
 
         // The initial linear layer.
         external_linear_layer.permute_mut(state);
@@ -227,7 +243,7 @@ pub trait Poseidon2: RichField {
         for r in rounds_f_beginning..p_end {
             state[0] += Self::from_canonical_u64(RC12[r][0]);
             state[0] = Self::sbox_p(&state[0]);
-            Self::matmul_internal(state, MATRIX_DIAG_12_GOLDILOCKS);
+            matmul_internal(state, MATRIX_DIAG_12_GOLDILOCKS);
         }
 
         // The second half of the external rounds.
