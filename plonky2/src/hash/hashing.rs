@@ -11,6 +11,10 @@ use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::AlgebraicHasher;
 
+pub(crate) const SPONGE_RATE: usize = 8;
+pub(crate) const SPONGE_CAPACITY: usize = 4;
+pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
+
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     pub fn hash_or_noop<H: AlgebraicHasher<F>>(&mut self, inputs: Vec<Target>) -> HashOutTarget {
         let zero = self.zero();
@@ -106,6 +110,7 @@ pub fn compress<F: Field, P: PlonkyPermutation<F>>(x: HashOut<F>, y: HashOut<F>)
     let mut perm = P::new(repeat(F::ZERO));
     perm.set_from_slice(&x.elements, 0);
     perm.set_from_slice(&y.elements, NUM_HASH_OUT_ELTS);
+    perm.set_from_iter(repeat(F::ZERO), 8);
 
     perm.permute();
 

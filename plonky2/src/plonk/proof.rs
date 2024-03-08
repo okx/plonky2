@@ -98,7 +98,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     pub fn get_public_inputs_hash(
         &self,
     ) -> <<C as GenericConfig<D>>::InnerHasher as Hasher<F>>::Hash {
-        C::InnerHasher::hash_no_pad(&self.public_inputs)
+        C::InnerHasher::hash_public_inputs(&self.public_inputs)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {

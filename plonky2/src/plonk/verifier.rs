@@ -19,7 +19,9 @@ pub(crate) fn verify<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, c
 ) -> Result<()> {
     validate_proof_with_pis_shape(&proof_with_pis, common_data)?;
 
+    println!("########## get_public_inputs_hash in verify START #############");
     let public_inputs_hash = proof_with_pis.get_public_inputs_hash();
+    println!("########## get_public_inputs_hash in verify END #############");
     let challenges = proof_with_pis.get_challenges(
         public_inputs_hash,
         &verifier_data.circuit_digest,

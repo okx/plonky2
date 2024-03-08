@@ -1,21 +1,18 @@
-
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
+use super::hash_types::HashOutTarget;
+use super::poseidon::PoseidonPermutation;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::Extendable;
 use crate::field::goldilocks_field::GoldilocksField;
-
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
-
-use super::hash_types::HashOutTarget;
-use super::poseidon::PoseidonPermutation;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct PoseidonBN128Permutation<F> {
@@ -29,7 +26,6 @@ impl<F: RichField> AsRef<[F]> for PoseidonBN128Permutation<F> {
         &self.state
     }
 }
-
 
 impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
     const RATE: usize = SPONGE_RATE;
@@ -61,6 +57,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
 
     fn permute(&mut self) {
         assert_eq!(SPONGE_WIDTH, 12);
+        // println!("start permute............");
         unsafe {
             let h = permute(
                 self.state[0].to_canonical_u64(),
@@ -143,7 +140,6 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
         }
     }
 
-
     fn squeeze(&self) -> &[F] {
         &self.state[..Self::RATE]
     }
@@ -157,14 +153,17 @@ impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
     type Permutation = PoseidonBN128Permutation<F>;
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
+        // println!("PoseidonBN128Hash hash_no_pad");
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
     }
 
     fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        println!("PoseidonBN128Hash hash public inputs");
         PoseidonHash::hash_no_pad(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
+        // println!("PoseidonBN128Hash two_to_one");
         compress::<F, Self::Permutation>(left, right)
     }
 }
@@ -209,13 +208,20 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use plonky2_field::types::{PrimeField64,Field};
-    // use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use plonky2_field::types::{Field, PrimeField64};
 
+    // use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
     use super::PoseidonBN128Hash;
-    use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, PoseidonGoldilocksConfig};
+    use crate::plonk::config::{
+        AlgebraicHasher, GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig,
+    };
+    use crate::types::{
+        verify_proof, Cbn128, ProofTuple, TransactionType, VDProof, C, D, F, ORDER_TREE_DEPTH,
+        POSITION_TREE_DEPTH,
+    };
+
     #[test]
-    fn test_poseidon_bn128() -> Result<()> {
+    fn test_poseidon_bn128_hash_no_pad() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -233,5 +239,65 @@ mod tests {
         assert_eq!(h.elements[3].0, 6331160477881736675u64);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_poseidon_bn128_two_to_one() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let left: [u8; 32] = [
+            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5,
+            6, 7, 8,
+        ];
+        let right: [u8; 32] = [
+            8, 9, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5,
+            6, 7, 1,
+        ];
+
+        let h = PoseidonBN128Hash::two_to_one(
+            GenericHashOut::<F>::from_bytes(&left),
+            GenericHashOut::<F>::from_bytes(&right),
+        );
+        println!("output: {:?}", h);
+        assert_eq!(h.elements[0].0, 5894400909438531414u64);
+        assert_eq!(h.elements[1].0, 4814851992117646301u64);
+        assert_eq!(h.elements[2].0, 17814584260098324190u64);
+        assert_eq!(h.elements[3].0, 15859500576163309036u64);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_poseidon_bn128_hash_public_inputs() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+        let mut v = Vec::new();
+        v.push(F::from_canonical_u64(8917524657281059100u64));
+        v.push(F::from_canonical_u64(13029010200779351910u64));
+        v.push(F::from_canonical_u64(16138660518493481604u64));
+        v.push(F::from_canonical_u64(17277322750214136960u64));
+        v.push(F::from_canonical_u64(1441151880423231811u64));
+
+        let h = PoseidonBN128Hash::hash_public_inputs(&v);
+        println!("out: {:?}", h);
+        assert_eq!(h.elements[0].0, 2325439551141788444);
+        assert_eq!(h.elements[1].0, 15244397589056680708);
+        assert_eq!(h.elements[2].0, 5900587506047513594);
+        assert_eq!(h.elements[3].0, 7217031981798124005);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_poseidon_bn128_algebric_hasher() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let mut builder = CircuitBuilder::<F, D>::new(Cbn12);
+        PoseidonBN128Hash::public_inputs_hash(inputs, builder)
     }
 }
