@@ -15,10 +15,10 @@ pub fn init_cuda() {
     let log_ns: Vec<usize> = (6..22).collect();
 
     let mut device_id = 0;
-    init_coset_rs(device_id, 24, GoldilocksField::coset_shift().to_canonical_u64());
     while device_id < num_of_gpus {
+        init_coset_rs(device_id, 24, GoldilocksField::coset_shift().to_canonical_u64());
         for log_n in &log_ns {
-            println!("{:?}", log_n);
+            // println!("{:?}", log_n);
             init_twiddle_factors_rs(device_id, *log_n);
         }
         device_id = device_id + 1;
