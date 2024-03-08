@@ -11,7 +11,7 @@ categories = ["cryptography"]
 edition = "2021"
 
 [features]
-default = ["gate_testing", "parallel", "rand_chacha", "std", "timing"]
+default = ["gate_testing", "parallel", "rand_chacha", "std"]
 gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]

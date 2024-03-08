@@ -715,6 +715,10 @@ impl<F: RichField> Hasher<F> for PoseidonHash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
     }
 
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
+    }
+
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
         compress::<F, Self::Permutation>(left, right)
     }

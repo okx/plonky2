@@ -160,48 +160,14 @@ impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
     }
 
-    // fn hash_public_inputs(input: &[F]) -> Self::Hash {
-    //     PoseidonHash::hash_no_pad(input)
-    // }
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
+    }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
         compress::<F, Self::Permutation>(left, right)
     }
 }
-
-// impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
-//     type AlgebraicPermutation = PoseidonBN128Permutation<Target>;
-
-//     fn permute_swapped<const D: usize>(
-//         inputs: Self::AlgebraicPermutation,
-//         swap: BoolTarget,
-//         builder: &mut CircuitBuilder<F, D>,
-//     ) -> Self::AlgebraicPermutation
-//     where
-//         F: RichField + Extendable<D>,
-//     {
-//         let gate_type = PoseidonGate::<F, D>::new();
-//         let gate = builder.add_gate(gate_type, vec![]);
-
-//         let swap_wire = PoseidonGate::<F, D>::WIRE_SWAP;
-//         let swap_wire = Target::wire(gate, swap_wire);
-//         builder.connect(swap.target, swap_wire);
-
-//         // Route input wires.
-//         let inputs = inputs.as_ref();
-//         for i in 0..SPONGE_WIDTH {
-//             let in_wire = PoseidonGate::<F, D>::wire_input(i);
-//             let in_wire = Target::wire(gate, in_wire);
-//             builder.connect(inputs[i], in_wire);
-//         }
-
-//         // Collect output wires.
-//         Self::AlgebraicPermutation::new(
-//             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
-//         )
-//     }
-// }
-
 
 // TODO: this is a work around. Still use Goldilocks based Poseidon for algebraic PoseidonBN128Hash.
 impl<F: RichField> AlgebraicHasher<F> for PoseidonBN128Hash {
@@ -243,11 +209,11 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use plonky2::field::types::Field;
-    use plonky2::plonk::config::{GenericConfig, Hasher, PoseidonGoldilocksConfig};
+    use plonky2_field::types::{PrimeField64,Field};
+    // use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
 
-    use crate::config::PoseidonBN128Hash;
-
+    use super::PoseidonBN128Hash;
+    use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, PoseidonGoldilocksConfig};
     #[test]
     fn test_poseidon_bn128() -> Result<()> {
         const D: usize = 2;

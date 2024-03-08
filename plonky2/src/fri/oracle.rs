@@ -175,7 +175,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         // If blinding, salt with two random elements to each leaf vector.
         let salt_size = if blinding { SALT_SIZE } else { 0 };
-        println!("salt_size: {:?}", salt_size);
+        // println!("salt_size: {:?}", salt_size);
 
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let num_gpus: usize = std::env::var("NUM_OF_GPUS")
@@ -184,9 +184,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .unwrap();
                 // let num_gpus: usize = 1;
         #[cfg(all(feature = "cuda", feature = "batch"))]
-        println!("get num of gpus: {:?}", num_gpus);
+        // println!("get num of gpus: {:?}", num_gpus);
         let total_num_of_fft = polynomials.len();
-        println!("total_num_of_fft: {:?}", total_num_of_fft);
+        // println!("total_num_of_fft: {:?}", total_num_of_fft);
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let per_device_batch = total_num_of_fft.div_ceil(num_gpus);
 
@@ -362,10 +362,13 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 alpha.reduce_polys_base(polys_coeff)
             );
             let mut quotient = composition_poly.divide_by_linear(*point);
-            quotient.coeffs.push(F::Extension::ZERO); // pad back to power of two
+            // quotient.coeffs.push(F::Extension::ZERO); // pad back to power of two
             alpha.shift_poly(&mut final_poly);
             final_poly += quotient;
         }
+        // Multiply the final polynomial by `X`, so that `final_poly` has the maximum degree for
+        // which the LDT will pass. See github.com/mir-protocol/plonky2/pull/436 for details.
+        final_poly.coeffs.insert(0, F::Extension::ZERO);
 
         let lde_final_poly = final_poly.lde(fri_params.config.rate_bits);
         let lde_final_values = timed!(
