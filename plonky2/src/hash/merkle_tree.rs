@@ -545,9 +545,9 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
-        // let now = Instant::now();
+        let now = Instant::now();
         fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        // println!("Time taken: {:?}", now.elapsed());
+        print_time(now, "fill digests buffer");        
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to

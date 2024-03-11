@@ -18,6 +18,8 @@ use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
+#[cfg(target_feature = "avx2")]
+use super::arch::x86_64::poseidon_goldilocks_avx2_bmi2::{poseidon_avx};
 
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
@@ -596,7 +598,8 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
-    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+    #[cfg(not(target_feature = "avx2"))]
+    fn poseidon1(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
 
@@ -606,6 +609,16 @@ pub trait Poseidon: PrimeField64 {
         debug_assert_eq!(round_ctr, N_ROUNDS);
 
         state
+    }
+
+    #[inline]
+    // #[cfg(target_feature = "avx2")]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {        
+        let r: [Self; SPONGE_WIDTH];
+        unsafe {
+            r = poseidon_avx(&input);
+        }
+        r
     }
 
     // For testing only, to ensure that various tricks are correct.
