@@ -141,11 +141,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     ) -> Self {
         let degree = polynomials[0].len();
         let log_n = log2_strict(degree) + rate_bits;
-        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
-            .expect("NUM_OF_GPUS should be set")
-            .parse()
-            .unwrap();
-        
+
         #[cfg(feature = "cuda")]
         if(log_n > 10 && polynomials.len() > 0){
             let lde_values = Self::from_coeffs_gpu(
@@ -158,6 +154,12 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 log_n,
                 degree
             );
+
+            let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+                .expect("NUM_OF_GPUS should be set")
+                .parse()
+                .unwrap();
+        
 
             if num_gpus != 1 {
                 let mut leaves = timed!(timing, "transpose LDEs", transpose(&lde_values));
@@ -310,16 +312,20 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                         cfg_trans.batches = per_device_batch as u32;
                         cfg_trans.are_inputs_on_device = true;
                         cfg_trans.are_outputs_on_device = true;
+
+                        let start = std::time::Instant::now();
                         transpose_rev_batch(
                             id as i32, 
                             device_transpose_data.as_mut_ptr(), 
                             device_output_data.as_mut_ptr(), 
-                            log2_strict(degree), 
+                            log_n, 
                             cfg_trans
                         );
 
+                        println!("real transpose_rev_batch elapsed: {:?}", start.elapsed());
+
                         let start = std::time::Instant::now();
-                        let nums: Vec<usize> = (0..poly_chunk.len()).collect();
+                        let nums: Vec<usize> = (0..(1<<log_n)).collect();
                         let r = nums
                             .par_iter()
                             .map(|i| {
