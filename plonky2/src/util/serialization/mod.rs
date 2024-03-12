@@ -2005,7 +2005,7 @@ pub trait Write {
             public_inputs,
         } = proof_with_pis;
         self.write_proof(proof)?;
-        self.write_usize(public_inputs.len())?;
+        // self.write_usize(public_inputs.len())?;
         self.write_field_vec(public_inputs)
     }
 
