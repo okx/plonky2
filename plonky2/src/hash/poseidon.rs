@@ -599,7 +599,7 @@ pub trait Poseidon: PrimeField64 {
 
     #[inline]
     #[cfg(not(target_feature = "avx2"))]
-    fn poseidon1(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
 
@@ -612,8 +612,8 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
-    // #[cfg(target_feature = "avx2")]
-    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {        
+    #[cfg(target_feature = "avx2")]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let r: [Self; SPONGE_WIDTH];
         unsafe {
             r = poseidon_avx(&input);
