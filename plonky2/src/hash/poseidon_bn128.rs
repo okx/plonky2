@@ -209,16 +209,10 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 mod tests {
     use anyhow::Result;
     use plonky2_field::types::{Field, PrimeField64};
-
-    // use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
     use super::PoseidonBN128Hash;
-    use crate::plonk::config::{
+    use crate::plonk::{circuit_builder::CircuitBuilder, config::{
         AlgebraicHasher, GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig,
-    };
-    use crate::types::{
-        verify_proof, Cbn128, ProofTuple, TransactionType, VDProof, C, D, F, ORDER_TREE_DEPTH,
-        POSITION_TREE_DEPTH,
-    };
+    }};
 
     #[test]
     fn test_poseidon_bn128_hash_no_pad() -> Result<()> {
@@ -291,13 +285,4 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_poseidon_bn128_algebric_hasher() -> Result<()> {
-        const D: usize = 2;
-        type C = PoseidonGoldilocksConfig;
-        type F = <C as GenericConfig<D>>::F;
-
-        let mut builder = CircuitBuilder::<F, D>::new(Cbn12);
-        PoseidonBN128Hash::public_inputs_hash(inputs, builder)
-    }
 }
