@@ -16,7 +16,7 @@ use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
 
 #[cfg(target_feature = "avx2")]
-use super::arch::x86_64::poseidon2_goldilocks_avx2::{add_rc_avx, sbox_avx, matmul_internal_avx, permute_mut_avx};
+use super::arch::x86_64::poseidon2_goldilocks_avx2::{add_rc_avx, sbox_avx, matmul_internal_avx, permute_mut_avx, internal_layer_avx};
 use super::hash_types::NUM_HASH_OUT_ELTS;
 
 pub const SPONGE_RATE: usize = 8;
@@ -153,23 +153,23 @@ pub fn matmul_internal<F: RichField>(
     state: &mut [F; SPONGE_WIDTH],
     mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
 ) {
-    // if no AVX
-    #[cfg(not(target_feature = "avx2"))]
     let sum: F = state.iter().cloned().sum();
-    // if no AVX
-    #[cfg(not(target_feature = "avx2"))]
     for i in 0..SPONGE_WIDTH {
         state[i] *= F::from_canonical_u64(mat_internal_diag_m_1[i]);
         state[i] += sum.clone();
     }
-    // if AVX
-    #[cfg(target_feature = "avx2")]
-    matmul_internal_avx(state, mat_internal_diag_m_1);
 }
 
 impl<F: RichField> P2Permutation<[F; 12]> for DiffusionMatrixGoldilocks {
+
+    #[cfg(not(target_feature = "avx2"))]
     fn permute_mut(&self, state: &mut [F; 12]) {
         matmul_internal::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
+    }
+
+    #[cfg(target_feature = "avx2")]
+    fn permute_mut(&self, state: &mut [F; 12]) {
+        matmul_internal_avx::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
     }
 }
 
@@ -184,14 +184,9 @@ pub trait Poseidon2: RichField {
     where
         F: RichField,
     {
-        // if no AVX
-        #[cfg(not(target_feature = "avx2"))]
         for i in 0..SPONGE_WIDTH {
             state[i] = state[i] + F::from_canonical_u64(rc[i]);
         }
-        // if AVX
-        #[cfg(target_feature = "avx2")]
-        add_rc_avx(state, rc);
     }
 
     #[inline]
@@ -212,17 +207,13 @@ pub trait Poseidon2: RichField {
     where
         F: RichField,
     {
-        // if no AVX
-        #[cfg(not(target_feature = "avx2"))]
         for i in 0..SPONGE_WIDTH {
             state[i] = Self::sbox_p(&state[i]);
         }
-        // if AVX
-        #[cfg(target_feature = "avx2")]
-        sbox_avx(state);
     }
 
     #[inline]
+    #[cfg(not(target_feature = "avx2"))]
     fn poseidon2(state: &mut [Self; SPONGE_WIDTH]) {
         let external_linear_layer = Poseidon2MEMatrix;
 
@@ -251,6 +242,39 @@ pub trait Poseidon2: RichField {
             Self::add_rc(state, &RC12[r]);
             Self::sbox(state);
             external_linear_layer.permute_mut(state);
+        }
+    }
+
+    #[inline]
+    #[cfg(target_feature = "avx2")]
+    fn poseidon2(state: &mut [Self; SPONGE_WIDTH]) {
+        permute_mut_avx(state);
+
+        // The first half of the external rounds.
+        let rounds = Self::ROUNDS_F + Self::ROUNDS_P;
+        let rounds_f_beginning = Self::ROUNDS_F / 2;
+        for r in 0..rounds_f_beginning {
+            add_rc_avx(state, &RC12[r]);
+            sbox_avx(state);
+            permute_mut_avx(state);
+        }
+
+        // The internal rounds.
+        let p_end = rounds_f_beginning + Self::ROUNDS_P;
+        internal_layer_avx(state, MATRIX_DIAG_12_GOLDILOCKS, rounds_f_beginning, p_end);
+        /*
+        for r in rounds_f_beginning..p_end {
+            state[0] += Self::from_canonical_u64(RC12[r][0]);
+            state[0] = Self::sbox_p(&state[0]);
+            matmul_internal_avx(state, MATRIX_DIAG_12_GOLDILOCKS);
+        }
+        */
+
+        // The second half of the external rounds.
+        for r in p_end..rounds {
+            add_rc_avx(state, &RC12[r]);
+            sbox_avx(state);
+            permute_mut_avx(state);
         }
     }
 }
@@ -466,7 +490,7 @@ mod tests {
             .unwrap();
 
         // Run our implementation.
-        let mut output = input;
+        let mut output: [GoldilocksField; 12] = input;
         Poseidon2::poseidon2(&mut output);
 
         assert_eq!(output, expected);

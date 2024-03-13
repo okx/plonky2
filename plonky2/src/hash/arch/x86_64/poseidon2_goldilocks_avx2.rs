@@ -1,24 +1,22 @@
-/// Code taken and adapted from: https://github.com/0xPolygonHermez/goldilocks/blob/master/src/goldilocks_base_field_avx.hpp
-
-use crate::hash::{hash_types::RichField, poseidon2::{SPONGE_WIDTH}};
 use core::arch::x86_64::*;
+
+/// Code taken and adapted from: https://github.com/0xPolygonHermez/goldilocks/blob/master/src/goldilocks_base_field_avx.hpp
+use crate::hash::{hash_types::RichField, poseidon2::SPONGE_WIDTH, poseidon2::RC12, poseidon2::Poseidon2};
 
 const MSB_: i64 = 0x8000000000000000u64 as i64;
 const P_s_: i64 = 0x7FFFFFFF00000001u64 as i64;
 const P_n_: i64 = 0xFFFFFFFF;
 
-#[inline]
-fn shift_avx(a: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn shift_avx(a: &__m256i) -> __m256i {
     unsafe {
         let MSB = _mm256_set_epi64x(MSB_, MSB_, MSB_, MSB_);
         _mm256_xor_si256(*a, MSB)
     }
 }
 
-#[inline]
-fn toCanonical_avx_s(a_s: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn toCanonical_avx_s(a_s: &__m256i) -> __m256i {
     unsafe {
         let P_s = _mm256_set_epi64x(P_s_, P_s_, P_s_, P_s_);
         let P_n = _mm256_set_epi64x(P_n_, P_n_, P_n_, P_n_);
@@ -28,9 +26,8 @@ fn toCanonical_avx_s(a_s: &__m256i) -> __m256i
     }
 }
 
-#[inline]
-fn add_avx_a_sc(a_sc: &__m256i, b: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn add_avx_a_sc(a_sc: &__m256i, b: &__m256i) -> __m256i {
     unsafe {
         let c0_s = _mm256_add_epi64(*a_sc, *b);
         let P_n = _mm256_set_epi64x(P_n_, P_n_, P_n_, P_n_);
@@ -41,17 +38,15 @@ fn add_avx_a_sc(a_sc: &__m256i, b: &__m256i) -> __m256i
     }
 }
 
-#[inline]
-fn add_avx(a: &__m256i, b: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn add_avx(a: &__m256i, b: &__m256i) -> __m256i {
     let a_s = shift_avx(a);
     let a_sc = toCanonical_avx_s(&a_s);
     add_avx_a_sc(&a_sc, b)
 }
 
-#[inline]
-fn add_avx_s_b_small(a_s: &__m256i, b_small: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn add_avx_s_b_small(a_s: &__m256i, b_small: &__m256i) -> __m256i {
     unsafe {
         let c0_s = _mm256_add_epi64(*a_s, *b_small);
         let mask_ = _mm256_cmpgt_epi32(*a_s, c0_s);
@@ -60,9 +55,8 @@ fn add_avx_s_b_small(a_s: &__m256i, b_small: &__m256i) -> __m256i
     }
 }
 
-#[inline]
-fn sub_avx_s_b_small(a_s: &__m256i, b: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn sub_avx_s_b_small(a_s: &__m256i, b: &__m256i) -> __m256i {
     unsafe {
         let c0_s = _mm256_sub_epi64(*a_s, *b);
         let mask_ = _mm256_cmpgt_epi32(c0_s, *a_s);
@@ -71,23 +65,22 @@ fn sub_avx_s_b_small(a_s: &__m256i, b: &__m256i) -> __m256i
     }
 }
 
-#[inline]
-fn reduce_avx_128_64(c_h: &__m256i, c_l: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn reduce_avx_128_64(c_h: &__m256i, c_l: &__m256i) -> __m256i {
     unsafe {
+        let MSB = _mm256_set_epi64x(MSB_, MSB_, MSB_, MSB_);
         let c_hh = _mm256_srli_epi64(*c_h, 32);
-        let c_ls = shift_avx(c_l);
+        let c_ls = _mm256_xor_si256(*c_l, MSB);
         let c1_s = sub_avx_s_b_small(&c_ls, &c_hh);
         let P_n = _mm256_set_epi64x(P_n_, P_n_, P_n_, P_n_);
         let c2 = _mm256_mul_epu32(*c_h, P_n);
         let c_s = add_avx_s_b_small(&c1_s, &c2);
-        shift_avx(&c_s)
+        _mm256_xor_si256(c_s, MSB)
     }
 }
 
-#[inline ]
-fn mult_avx_128(a: &__m256i, b: &__m256i) -> (__m256i, __m256i)
-{
+#[inline(always)]
+fn mult_avx_128(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
     unsafe {
         let a_h = _mm256_castps_si256(_mm256_movehdup_ps(_mm256_castsi256_ps(*a)));
         let b_h = _mm256_castps_si256(_mm256_movehdup_ps(_mm256_castsi256_ps(*b)));
@@ -110,16 +103,14 @@ fn mult_avx_128(a: &__m256i, b: &__m256i) -> (__m256i, __m256i)
     }
 }
 
-#[inline]
-fn mult_avx(a: &__m256i, b: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn mult_avx(a: &__m256i, b: &__m256i) -> __m256i {
     let (c_h, c_l) = mult_avx_128(a, b);
     reduce_avx_128_64(&c_h, &c_l)
 }
 
-#[inline ]
-fn sqr_avx_128(a: &__m256i) -> (__m256i, __m256i)
-{
+#[inline(always)]
+fn sqr_avx_128(a: &__m256i) -> (__m256i, __m256i) {
     unsafe {
         let a_h = _mm256_castps_si256(_mm256_movehdup_ps(_mm256_castsi256_ps(*a)));
         let c_ll = _mm256_mul_epu32(*a, *a);
@@ -135,13 +126,13 @@ fn sqr_avx_128(a: &__m256i) -> (__m256i, __m256i)
     }
 }
 
-#[inline]
-fn sqr_avx(a: &__m256i) -> __m256i
-{
+#[inline(always)]
+fn sqr_avx(a: &__m256i) -> __m256i {
     let (c_h, c_l) = sqr_avx_128(a);
     reduce_avx_128_64(&c_h, &c_l)
 }
 
+#[inline(always)]
 pub fn add_rc_avx<F>(state: &mut [F; SPONGE_WIDTH], rc: &[u64; SPONGE_WIDTH])
 where
     F: RichField,
@@ -162,6 +153,7 @@ where
     }
 }
 
+#[inline(always)]
 pub fn sbox_avx<F>(state: &mut [F; SPONGE_WIDTH])
 where
     F: RichField,
@@ -193,13 +185,29 @@ where
 }
 
 #[inline]
+fn sbox_p<F>(input: &F) -> F
+where
+    F: RichField,
+{
+    let x2 = (*input) * (*input);
+    let x4 = x2 * x2;
+    let x3 = x2 * (*input);
+    x3 * x4
+}
+
+#[inline(always)]
 fn apply_m_4_avx<F>(x: &__m256i, s: &[F]) -> __m256i
 where
     F: RichField,
 {
     // This is based on apply_m_4, but we pack 4 and then 2 operands per operation
     unsafe {
-        let y = _mm256_set_epi64x(s[3].to_canonical_u64() as i64, s[3].to_canonical_u64() as i64, s[1].to_canonical_u64() as i64, s[1].to_canonical_u64() as i64);
+        let y = _mm256_set_epi64x(
+            s[3].to_canonical_u64() as i64,
+            s[3].to_canonical_u64() as i64,
+            s[1].to_canonical_u64() as i64,
+            s[1].to_canonical_u64() as i64,
+        );
         let t = add_avx(&x, &y);
         let mut tt: [i64; 4] = [0; 4];
         _mm256_storeu_si256((&mut tt).as_mut_ptr().cast::<__m256i>(), t);
@@ -220,26 +228,36 @@ where
     }
 }
 
+#[inline(always)]
 pub fn matmul_internal_avx<F>(
     state: &mut [F; SPONGE_WIDTH],
     mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
-)
-where
+) where
     F: RichField,
 {
+    /*
     let mut sum = state[0];
     for i in 1..SPONGE_WIDTH {
         sum = sum + state[i];
     }
     let si64: i64 = sum.to_canonical_u64() as i64;
+    */
     unsafe {
+        // let ss = _mm256_set_epi64x(si64, si64, si64, si64);
         let s0 = _mm256_loadu_si256((&state[0..4]).as_ptr().cast::<__m256i>());
         let s1 = _mm256_loadu_si256((&state[4..8]).as_ptr().cast::<__m256i>());
         let s2 = _mm256_loadu_si256((&state[8..12]).as_ptr().cast::<__m256i>());
+        let ss0 = add_avx(&s0, &s1);
+        let ss1 = add_avx(&s2, &ss0);
+        let ss2 = _mm256_permute4x64_epi64(ss1, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+        let ss0 = add_avx(&ss1, &ss2);
+        let ss1 = _mm256_permute4x64_epi64(ss2, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+        let ss2 = add_avx(&ss0, &ss1);
+        let ss0 = _mm256_permute4x64_epi64(ss1, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+        let ss = add_avx(&ss0, &ss2);
         let m0 = _mm256_loadu_si256((&mat_internal_diag_m_1[0..4]).as_ptr().cast::<__m256i>());
         let m1 = _mm256_loadu_si256((&mat_internal_diag_m_1[4..8]).as_ptr().cast::<__m256i>());
         let m2 = _mm256_loadu_si256((&mat_internal_diag_m_1[8..12]).as_ptr().cast::<__m256i>());
-        let ss = _mm256_set_epi64x(si64, si64, si64, si64);
         let p10 = mult_avx(&s0, &m0);
         let p11 = mult_avx(&s1, &m1);
         let p12 = mult_avx(&s2, &m2);
@@ -252,7 +270,7 @@ where
     }
 }
 
-#[inline]
+#[inline(always)]
 pub fn permute_mut_avx<F>(state: &mut [F; SPONGE_WIDTH])
 where
     F: RichField,
@@ -281,5 +299,62 @@ where
         _mm256_storeu_si256((&mut state[4..8]).as_mut_ptr().cast::<__m256i>(), s3);
         let s3 = add_avx(&r2, &s);
         _mm256_storeu_si256((&mut state[8..12]).as_mut_ptr().cast::<__m256i>(), s3);
+    }
+}
+
+#[inline(always)]
+pub fn internal_layer_avx<F>(
+    state: &mut [F; SPONGE_WIDTH],
+    mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
+    r_beg: usize,
+    r_end: usize
+) where
+    F: RichField,
+{
+    unsafe {
+        // The internal rounds.
+        let mut s0 = _mm256_loadu_si256((&state[0..4]).as_ptr().cast::<__m256i>());
+        let mut s1 = _mm256_loadu_si256((&state[4..8]).as_ptr().cast::<__m256i>());
+        let mut s2 = _mm256_loadu_si256((&state[8..12]).as_ptr().cast::<__m256i>());
+
+        let m0 = _mm256_loadu_si256((&mat_internal_diag_m_1[0..4]).as_ptr().cast::<__m256i>());
+        let m1 = _mm256_loadu_si256((&mat_internal_diag_m_1[4..8]).as_ptr().cast::<__m256i>());
+        let m2 = _mm256_loadu_si256((&mat_internal_diag_m_1[8..12]).as_ptr().cast::<__m256i>());
+
+        // let mut sv: [F; 4] = [F::ZERO; 4];
+
+        for r in r_beg..r_end {
+            state[0] += F::from_canonical_u64(RC12[r][0]);
+            state[0] = sbox_p(&state[0]);
+            s0 = _mm256_loadu_si256((&state[0..4]).as_ptr().cast::<__m256i>());
+            /*
+            // state[0] = state[0] + RC12[r][0]
+            let rc = _mm256_set_epi64x(0, 0, 0, RC12[r][0] as i64);
+            s0 = add_avx(&s0, &rc);
+            // state[0] = sbox(state[0])
+            _mm256_storeu_si256((&mut sv).as_mut_ptr().cast::<__m256i>(), s0);
+            sv[0] = sbox_p(&sv[0]);
+            s0 = _mm256_loadu_si256((&sv).as_ptr().cast::<__m256i>());
+            */
+            // mat mul
+            let ss0 = add_avx(&s0, &s1);
+            let ss1 = add_avx(&s2, &ss0);
+            let ss2 = _mm256_permute4x64_epi64(ss1, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+            let ss0 = add_avx(&ss1, &ss2);
+            let ss1 = _mm256_permute4x64_epi64(ss2, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+            let ss2 = add_avx(&ss0, &ss1);
+            let ss0 = _mm256_permute4x64_epi64(ss1, 0x93); // [0, 1, 2, 3] -> [3, 0, 1, 2]
+            let ss = add_avx(&ss0, &ss2);
+            let p10 = mult_avx(&s0, &m0);
+            let p11 = mult_avx(&s1, &m1);
+            let p12 = mult_avx(&s2, &m2);
+            s0 = add_avx(&p10, &ss);
+            s1 = add_avx(&p11, &ss);
+            s2 = add_avx(&p12, &ss);
+            _mm256_storeu_si256((&mut state[0..4]).as_mut_ptr().cast::<__m256i>(), s0);
+        }
+        // _mm256_storeu_si256((&mut state[0..4]).as_mut_ptr().cast::<__m256i>(), s0);
+        _mm256_storeu_si256((&mut state[4..8]).as_mut_ptr().cast::<__m256i>(), s1);
+        _mm256_storeu_si256((&mut state[8..12]).as_mut_ptr().cast::<__m256i>(), s2);
     }
 }
