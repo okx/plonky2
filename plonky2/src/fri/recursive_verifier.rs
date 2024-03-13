@@ -50,6 +50,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let start = self.exp_from_bits_const_base(g_inv, x_index_within_coset_bits.iter().rev());
         let coset_start = self.mul(start, x);
 
+        // NOTE: circom_compatability 
         // // The answer is gotten by interpolating {(x*g^i, P(x*g^i))} and evaluating at beta.
         // let interpolation_gate = <CosetInterpolationGate<F, D>>::with_max_degree(
         //     arity_bits,
@@ -84,11 +85,12 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             &self.config,
             max_fri_arity_bits.max(self.config.fri_config.cap_height),
         );
+
+        // NOTE: cicrcom_compatability
         // let interpolation_gate = CosetInterpolationGate::<F, D>::with_max_degree(
         //     max_fri_arity_bits,
         //     self.config.max_quotient_degree_factor,
         // );
-
         // let interpolation_wires = interpolation_gate.num_wires();
         // let interpolation_routed_wires = interpolation_gate.num_routed_wires();
         let (interpolation_wires, interpolation_routed_wires) =
@@ -273,6 +275,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
 
         // sum
+        // NOTE: circom_compatability 
         // Multiply the final polynomial by `X`, so that `final_poly` has the maximum degree for
         // which the LDT will pass. See github.com/mir-protocol/plonky2/pull/436 for details.
         self.mul_extension(sum, subgroup_x)

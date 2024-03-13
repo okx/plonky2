@@ -24,6 +24,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         H::permute_swapped(inputs, swap, self)
     }
 
+    // NOTE: cicrcom_compatability
     pub fn public_inputs_hash<H: AlgebraicHasher<F>>(
         &mut self,
         inputs: Vec<Target>,

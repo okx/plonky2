@@ -38,6 +38,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Interpolates a polynomial, whose points are a coset of the multiplicative subgroup with the
     /// given size, and whose values are given. Returns the evaluation of the interpolant at
     /// `evaluation_point`.
+    // NOTE: cicrcom_compatability
     pub(crate) fn interpolate_coset<G: InterpolationGate<F, D>>(
         &mut self,
         subgroup_bits: usize,
