@@ -3,7 +3,7 @@ use alloc::vec::Vec;
 
 use hashbrown::HashSet;
 
-use super::circuit_builder::NUM_COINS_LOOKUP;
+
 use crate::field::extension::Extendable;
 use crate::field::polynomial::PolynomialCoeffs;
 use crate::fri::proof::{CompressedFriProof, FriChallenges, FriProof, FriProofTarget};

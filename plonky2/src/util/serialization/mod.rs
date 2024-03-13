@@ -378,8 +378,8 @@ pub trait Read {
         let wires = self.read_target_ext_vec::<D>()?;
         let plonk_zs = self.read_target_ext_vec::<D>()?;
         let plonk_zs_next = self.read_target_ext_vec::<D>()?;
-        let lookup_zs = self.read_target_ext_vec::<D>()?;
-        let next_lookup_zs = self.read_target_ext_vec::<D>()?;
+        let _lookup_zs = self.read_target_ext_vec::<D>()?;
+        let _next_lookup_zs = self.read_target_ext_vec::<D>()?;
         let partial_products = self.read_target_ext_vec::<D>()?;
         let quotient_polys = self.read_target_ext_vec::<D>()?;
 
@@ -758,8 +758,8 @@ pub trait Read {
 
         let num_partial_products = self.read_usize()?;
 
-        let num_lookup_polys = self.read_usize()?;
-        let num_lookup_selectors = self.read_usize()?;
+        let _num_lookup_polys = self.read_usize()?;
+        let _num_lookup_selectors = self.read_usize()?;
         let length = self.read_usize()?;
         let mut luts = Vec::with_capacity(length);
 

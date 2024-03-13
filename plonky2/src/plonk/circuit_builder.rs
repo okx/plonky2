@@ -9,7 +9,7 @@ use std::time::Instant;
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, info, Level};
-use plonky2_util::ceil_div_usize;
+
 
 use crate::field::cosets::get_unique_coset_shifts;
 use crate::field::extension::{Extendable, FieldExtension};
@@ -25,11 +25,11 @@ use crate::gates::arithmetic_base::ArithmeticGate;
 use crate::gates::arithmetic_extension::ArithmeticExtensionGate;
 use crate::gates::constant::ConstantGate;
 use crate::gates::gate::{CurrentSlot, Gate, GateInstance, GateRef};
-use crate::gates::lookup::{Lookup, LookupGate};
+use crate::gates::lookup::{Lookup};
 use crate::gates::lookup_table::LookupTable;
 use crate::gates::noop::NoopGate;
 use crate::gates::public_input::PublicInputGate;
-use crate::gates::selectors::{selector_ends_lookups, selector_polynomials, selectors_lookup};
+use crate::gates::selectors::{selector_polynomials};
 use crate::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_proofs::MerkleProofTarget;
 use crate::hash::merkle_tree::MerkleCap;
@@ -920,7 +920,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Builds a "full circuit", with both prover and verifier data.
     pub fn build_with_options<C: GenericConfig<D, F = F>>(
         mut self,
-        commit_to_sigma: bool,
+        _commit_to_sigma: bool,
     ) -> CircuitData<F, C, D> {
         let mut timing = TimingTree::new("preprocess", Level::Trace);
 

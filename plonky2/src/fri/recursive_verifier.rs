@@ -10,7 +10,7 @@ use crate::fri::proof::{
 };
 use crate::fri::structure::{FriBatchInfoTarget, FriInstanceInfoTarget, FriOpeningsTarget};
 use crate::fri::{FriConfig, FriParams};
-use crate::gates::coset_interpolation::CosetInterpolationGate;
+
 use crate::gates::gate::Gate;
 use crate::gates::high_degree_interpolation::HighDegreeInterpolationGate;
 use crate::gates::interpolation::InterpolationGate;

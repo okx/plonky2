@@ -6,7 +6,7 @@ use core::ops::{Range, RangeFrom};
 use anyhow::Result;
 use serde::Serialize;
 
-use super::circuit_builder::LookupWire;
+
 use crate::field::extension::Extendable;
 use crate::field::fft::FftRootTable;
 use crate::field::types::Field;
@@ -18,8 +18,8 @@ use crate::fri::structure::{
 };
 use crate::fri::{FriConfig, FriParams};
 use crate::gates::gate::GateRef;
-use crate::gates::lookup::Lookup;
-use crate::gates::lookup_table::LookupTable;
+
+
 use crate::gates::selectors::SelectorsInfo;
 use crate::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_tree::MerkleCap;

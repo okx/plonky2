@@ -140,7 +140,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Self {
         let degree = polynomials[0].len();
-        let log_n = log2_strict(degree) + rate_bits;
+        let _log_n = log2_strict(degree) + rate_bits;
 
         #[cfg(feature = "cuda")]
         if(log_n > 10 && polynomials.len() > 0){
@@ -468,7 +468,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 &format!("reduce batch of {} polynomials", polynomials.len()),
                 alpha.reduce_polys_base(polys_coeff)
             );
-            let mut quotient = composition_poly.divide_by_linear(*point);
+            let quotient = composition_poly.divide_by_linear(*point);
             // quotient.coeffs.push(F::Extension::ZERO); // pad back to power of two
             alpha.shift_poly(&mut final_poly);
             final_poly += quotient;

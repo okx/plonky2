@@ -1,14 +1,14 @@
-use alloc::vec;
+
 use core::ops::Range;
 
 use crate::field::extension::Extendable;
 use crate::gates::gate::Gate;
 use crate::hash::hash_types::RichField;
-use crate::iop::ext_target::ExtensionTarget;
-use crate::iop::target::Target;
-use crate::plonk::circuit_builder::CircuitBuilder;
+
+
+
 use crate::plonk::circuit_data::CommonCircuitData;
-use crate::util::serialization::{Buffer, IoResult, Read, Write};
+use crate::util::serialization::{Buffer, IoResult};
 /// Trait for gates which interpolate a polynomial, whose points are a (base field) coset of the multiplicative subgroup
 /// with the given size, and whose values are extension field elements, given by input wires.
 /// Outputs the evaluation of the interpolant at a given (extension field) evaluation point.
@@ -24,12 +24,12 @@ pub(crate) trait InterpolationGate<F: RichField + Extendable<D>, const D: usize>
         )
     }
 
-    fn serialize(&self, dst: &mut Vec<u8>, common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
         todo!()
  
     }
 
-    fn deserialize(src: &mut Buffer, common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
+    fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         todo!()
     }
 

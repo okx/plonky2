@@ -1,27 +1,27 @@
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use core::cmp::min;
+
 use core::mem::swap;
 
 use anyhow::{ensure, Result};
-use hashbrown::HashMap;
+
 use plonky2_maybe_rayon::*;
 
-use super::circuit_builder::{LookupChallenges, LookupWire};
+
 use crate::field::extension::Extendable;
 use crate::field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use crate::field::types::Field;
 use crate::field::zero_poly_coset::ZeroPolyOnCoset;
 use crate::fri::oracle::PolynomialBatch;
-use crate::gates::lookup::LookupGate;
-use crate::gates::lookup_table::LookupTableGate;
-use crate::gates::selectors::LookupSelectors;
+
+
+
 use crate::hash::hash_types::RichField;
 use crate::iop::challenger::Challenger;
 use crate::iop::generator::generate_partial_witness;
-use crate::iop::target::Target;
-use crate::iop::witness::{MatrixWitness, PartialWitness, PartitionWitness, Witness, WitnessWrite};
-use crate::plonk::circuit_builder::NUM_COINS_LOOKUP;
+
+use crate::iop::witness::{MatrixWitness, PartialWitness, PartitionWitness, Witness};
+
 use crate::plonk::circuit_data::{CommonCircuitData, ProverOnlyCircuitData};
 use crate::plonk::config::{GenericConfig, Hasher};
 use crate::plonk::plonk_common::PlonkOracle;
@@ -133,7 +133,7 @@ pub fn prove_with_partition_witness<
 >(
     prover_data: &ProverOnlyCircuitData<F, C, D>,
     common_data: &CommonCircuitData<F, D>,
-    mut partition_witness: PartitionWitness<F>,
+    partition_witness: PartitionWitness<F>,
     timing: &mut TimingTree,
 ) -> Result<ProofWithPublicInputs<F, C, D>>
 where

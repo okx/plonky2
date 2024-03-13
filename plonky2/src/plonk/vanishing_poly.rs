@@ -1,19 +1,19 @@
 use alloc::vec::Vec;
 use alloc::{format, vec};
-use core::cmp::min;
 
-use plonky2_field::polynomial::PolynomialCoeffs;
-use plonky2_util::ceil_div_usize;
 
-use super::circuit_builder::{LookupChallenges, NUM_COINS_LOOKUP};
-use super::vars::EvaluationVarsBase;
+
+
+
+
+
 use crate::field::batch_util::batch_add_inplace;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::Field;
 use crate::field::zero_poly_coset::ZeroPolyOnCoset;
-use crate::gates::lookup::LookupGate;
-use crate::gates::lookup_table::LookupTableGate;
-use crate::gates::selectors::LookupSelectors;
+
+
+
 use crate::hash::hash_types::RichField;
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::Target;

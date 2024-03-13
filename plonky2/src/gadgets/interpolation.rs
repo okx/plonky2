@@ -2,7 +2,7 @@ use alloc::vec;
 
 use plonky2_field::extension::Extendable;
 
-use crate::gates::coset_interpolation::CosetInterpolationGate;
+
 use crate::gates::interpolation::InterpolationGate;
 use crate::hash::hash_types::RichField;
 use crate::iop::ext_target::ExtensionTarget;
@@ -68,7 +68,7 @@ mod tests {
     use crate::field::extension::FieldExtension;
     use crate::field::interpolation::interpolant;
     use crate::field::types::{Field, Sample};
-    use crate::gates::coset_interpolation::CosetInterpolationGate;
+    
     use crate::gates::high_degree_interpolation::HighDegreeInterpolationGate;
     use crate::gates::low_degree_interpolation::LowDegreeInterpolationGate;
     use crate::iop::witness::PartialWitness;
