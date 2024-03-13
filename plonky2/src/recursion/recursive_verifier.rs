@@ -29,6 +29,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         // let public_inputs_hash =
         //     self.hash_n_to_hash_no_pad::<C::InnerHasher>(proof_with_pis.public_inputs.clone());
         let public_inputs_hash =
+        // NOTE: circom_compatability 
         self.public_inputs_hash::<C::InnerHasher>(proof_with_pis.public_inputs.clone());
         let challenges = proof_with_pis.get_challenges::<F, C>(
             self,
@@ -663,9 +664,9 @@ mod tests {
 
         let mut timing = TimingTree::new("prove", Level::Debug);
         let proof = prove(&data.prover_only, &data.common, pw, &mut timing)?;
-        // if print_timing {
-        //     timing.print();
-        // }
+        if print_timing {
+            timing.print();
+        }
 
         data.verify(proof.clone())?;
 

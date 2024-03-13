@@ -349,8 +349,8 @@ where
         openings,
         opening_proof,
     };
-    // #[cfg(feature="timing")]
-    // timing.print();
+    #[cfg(feature="timing")]
+    timing.print();
     
     Ok(ProofWithPublicInputs::<F, C, D> {
         proof,

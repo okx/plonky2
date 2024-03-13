@@ -358,16 +358,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Adds a gate to the circuit, and returns its index.
     pub fn add_gate<G: Gate<F, D>>(&mut self, gate_type: G, mut constants: Vec<F>) -> usize {
         // println!("add gate: {:?}", gate_type.id());
-        // let gate_id = gate_type.id();
-        // if(gate_type.id().contains("LowDegreeInterpolationGate")) {
-        //     println!("add gate: {:?}", gate_type.id());
-        // }
-        // if(gate_type.id().contains("MulExtensionGate")) {
-        //     println!("add gate: {:?}", gate_type.id());
-        // }
-        // if(gate_type.id().contains("ReducingGate")) {
-        //     println!("add gate: {:?}", gate_type.id());
-        // }
 
         self.check_gate_compatibility(&gate_type);
 
