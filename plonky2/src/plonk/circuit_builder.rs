@@ -9,7 +9,7 @@ use std::{collections::BTreeMap, sync::Arc, time::Instant};
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, info, warn, Level};
-use plonky2_util::ceil_div_usize;
+
 
 use crate::field::cosets::get_unique_coset_shifts;
 use crate::field::extension::{Extendable, FieldExtension};
@@ -1045,7 +1045,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 
     pub fn try_build_with_options<C: GenericConfig<D, F = F>>(
         mut self,
-        commit_to_sigma: bool,
+        _commit_to_sigma: bool,
     ) -> (CircuitData<F, C, D>, bool) {
         let mut timing = TimingTree::new("preprocess", Level::Trace);
 
