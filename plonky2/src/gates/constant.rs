@@ -1,6 +1,5 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec, vec::Vec};
 
 use serde::{Deserialize, Serialize};
 
@@ -27,16 +26,16 @@ pub struct ConstantGate {
 }
 
 impl ConstantGate {
-    pub fn new(num_consts: usize) -> Self {
+    pub const fn new(num_consts: usize) -> Self {
         Self { num_consts }
     }
 
-    pub fn const_input(&self, i: usize) -> usize {
+    const fn const_input(&self, i: usize) -> usize {
         debug_assert!(i < self.num_consts);
         i
     }
 
-    pub fn wire_output(&self, i: usize) -> usize {
+    const fn wire_output(&self, i: usize) -> usize {
         debug_assert!(i < self.num_consts);
         i
     }
