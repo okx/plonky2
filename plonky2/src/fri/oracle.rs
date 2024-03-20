@@ -298,7 +298,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     host_data.as_mut_slice(),
                     0,
                     total_num_of_fft,
-                );
+                ).expect("copy to host error");
                 PolynomialValues::new(host_data).values
             })
             .collect::<Vec<Vec<F>>>();
