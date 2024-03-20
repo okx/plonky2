@@ -140,6 +140,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Self {
         let degree = polynomials[0].len();
+
+        #[cfg(feature = "cuda")]
         let log_n = log2_strict(degree);
 
         #[cfg(feature = "cuda")]
