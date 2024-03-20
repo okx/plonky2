@@ -80,7 +80,7 @@ lazy_static! {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+    
 
     #[cfg(feature = "precompile")]
     #[test]

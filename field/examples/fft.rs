@@ -15,7 +15,7 @@ fn main() {
     let domain_size = 1usize << 10;
 
     let v: Vec<u64> = (0..domain_size).map(|_| random_fr()).collect();
-    let mut buffer = v.clone();
+    let buffer = v.clone();
 
     let coeffs = buffer
         .iter()

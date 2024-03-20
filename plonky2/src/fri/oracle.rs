@@ -3,8 +3,7 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "cuda")]
 use cryptography_cuda::{
-    device::memory::HostOrDeviceSlice, device::stream::CudaStream, intt_batch, lde_batch_multi_gpu,
-    ntt_batch, transpose_rev_batch, types::*,
+    device::memory::HostOrDeviceSlice, lde_batch_multi_gpu, transpose_rev_batch, types::*,
 };
 use itertools::Itertools;
 use plonky2_field::types::Field;
@@ -145,7 +144,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let log_n = log2_strict(degree);
 
         #[cfg(feature = "cuda")]
-        if(log_n + rate_bits > 10 && polynomials.len() > 0){
+        if log_n + rate_bits > 10 && polynomials.len() > 0 {
             let lde_values = Self::from_coeffs_gpu(
                 &polynomials,
                 rate_bits,
@@ -157,7 +156,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 degree
             );
 
-            let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            let _num_gpus: usize = std::env::var("NUM_OF_GPUS")
                 .expect("NUM_OF_GPUS should be set")
                 .parse()
                 .unwrap();
@@ -205,15 +204,15 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         polynomials: &[PolynomialCoeffs<F>],
         rate_bits: usize,
         blinding: bool,
-        cap_height: usize,
-        timing: &mut TimingTree,
-        fft_root_table: Option<&FftRootTable<F>>,
+        _cap_height: usize,
+        _timing: &mut TimingTree,
+        _fft_root_table: Option<&FftRootTable<F>>,
         log_n: usize,
-        degree: usize
+        _degree: usize
     )-> Vec<Vec<F>>{
         // If blinding, salt with two random elements to each leaf vector.
 
-        use plonky2_field::polynomial;
+        
         let salt_size = if blinding { SALT_SIZE } else { 0 };
         println!("salt_size: {:?}", salt_size);
         let output_domain_size = log_n + rate_bits;
@@ -293,7 +292,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let nums: Vec<usize> = (0..(1<< output_domain_size)).collect();
         let r = nums
             .par_iter()
-            .map(|i| {
+            .map(|_i| {
                 let mut host_data: Vec<F> = vec![F::ZERO; total_num_of_fft];
                 device_transpose_data.copy_to_host_offset(
                     host_data.as_mut_slice(),

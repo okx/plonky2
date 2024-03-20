@@ -5,7 +5,7 @@ pub fn init_cuda() {
     use plonky2_field::types::PrimeField64;
 
     use cryptography_cuda::{
-        get_number_of_gpus_rs, init_twiddle_factors_rs, init_coset_rs, ntt, ntt_batch, types::NTTInputOutputOrder,
+        get_number_of_gpus_rs, init_twiddle_factors_rs, init_coset_rs,
     };
 
     let num_of_gpus = get_number_of_gpus_rs();
