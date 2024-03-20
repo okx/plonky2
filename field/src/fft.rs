@@ -34,6 +34,7 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     root_table
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fft_dispatch_gpu<F: Field>(
     input: &mut [F],
