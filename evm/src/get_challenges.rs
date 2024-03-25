@@ -325,7 +325,7 @@ impl<const D: usize> StarkProofTarget<D> {
         StarkProofChallengesTarget {
             stark_alphas,
             stark_zeta,
-            fri_challenges: challenger.fri_challenges(
+            fri_challenges: challenger.fri_challenges::<C>(
                 builder,
                 commit_phase_merkle_caps,
                 final_poly,

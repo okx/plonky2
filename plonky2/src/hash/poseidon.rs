@@ -21,6 +21,8 @@ use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
 #[cfg(target_feature = "avx2")]
 use super::arch::x86_64::poseidon_goldilocks_avx2::{poseidon_avx};
 
+use super::hash_types::HashOutTarget;
+
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
 pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
@@ -723,6 +725,10 @@ impl<F: RichField> Hasher<F> for PoseidonHash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
     }
 
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
+    }
+
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
         compress::<F, Self::Permutation>(left, right)
     }
@@ -758,6 +764,16 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
         Self::AlgebraicPermutation::new(
             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
         )
+    }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        HashOutTarget::from_vec(builder.hash_n_to_m_no_pad::<PoseidonHash>(inputs, 4))
     }
 }
 

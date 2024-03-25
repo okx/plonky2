@@ -125,4 +125,8 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
         arr.copy_from_slice(&keccak(v).0[..N]);
         BytesHash(arr)
     }
+
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        KeccakHash::hash_no_pad(input)
+    }
 }

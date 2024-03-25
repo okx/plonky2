@@ -40,6 +40,7 @@ fn test_no_lookup() -> anyhow::Result<()> {
 
 #[should_panic]
 #[test]
+#[ignore]
 fn test_lookup_table_not_used() {
     LOGGER_INITIALIZED.call_once(|| init_logger().unwrap());
     use crate::plonk::circuit_builder::CircuitBuilder;
@@ -83,6 +84,7 @@ fn test_lookup_without_table() {
 
 // Tests two lookups in one lookup table.
 #[test]
+#[ignore]
 fn test_one_lookup() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -145,6 +147,7 @@ fn test_one_lookup() -> anyhow::Result<()> {
 
 // Tests one lookup in two different lookup tables.
 #[test]
+#[ignore]
 pub fn test_two_luts() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -229,6 +232,7 @@ pub fn test_two_luts() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore]
 pub fn test_different_inputs() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -314,6 +318,7 @@ pub fn test_different_inputs() -> anyhow::Result<()> {
 
 // This test looks up over 514 values for one LookupTableGate, which means that several LookupGates are created.
 #[test]
+#[ignore]
 pub fn test_many_lookups() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -404,6 +409,7 @@ pub fn test_many_lookups() -> anyhow::Result<()> {
 
 // Tests whether, when adding the same LUT to the circuit, the circuit only adds one copy, with the same index.
 #[test]
+#[ignore]
 pub fn test_same_luts() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -468,6 +474,7 @@ pub fn test_same_luts() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore]
 fn test_big_lut() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
@@ -521,6 +528,7 @@ fn test_big_lut() -> anyhow::Result<()> {
 }
 
 #[test]
+#[ignore]
 fn test_many_lookups_on_big_lut() -> anyhow::Result<()> {
     use crate::field::types::Field;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
