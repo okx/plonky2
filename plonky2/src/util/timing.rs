@@ -1,7 +1,7 @@
 #[cfg(feature = "timing")]
 use std::time::{Duration, Instant};
 
-use log::{ Level};
+use log::Level;
 
 /// The hierarchy of scopes, and the time consumed by each one. Useful for profiling.
 #[cfg(feature = "timing")]

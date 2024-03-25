@@ -15,3 +15,11 @@ git submodule update --init --recursive
 ```
 cargo run --release -p plonky2_field --features=cuda --example fft
 ```
+
+# Rust
+
+To use a nightly toolchain for Plonky2 by default, you can run
+
+```
+rustup override set nightly
+```

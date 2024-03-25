@@ -98,7 +98,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     pub fn get_public_inputs_hash(
         &self,
     ) -> <<C as GenericConfig<D>>::InnerHasher as Hasher<F>>::Hash {
-        C::InnerHasher::hash_no_pad(&self.public_inputs)
+        C::InnerHasher::hash_public_inputs(&self.public_inputs)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -227,7 +227,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     pub(crate) fn get_public_inputs_hash(
         &self,
     ) -> <<C as GenericConfig<D>>::InnerHasher as Hasher<F>>::Hash {
-        C::InnerHasher::hash_no_pad(&self.public_inputs)
+        // C::InnerHasher::hash_no_pad(&self.public_inputs)
+        C::InnerHasher::hash_public_inputs(&self.public_inputs)
     }
 
     pub fn to_bytes(&self) -> Vec<u8> {
@@ -260,8 +261,8 @@ pub struct ProofChallenges<F: RichField + Extendable<D>, const D: usize> {
     /// Random values used to combine PLONK constraints.
     pub plonk_alphas: Vec<F>,
 
-    /// Lookup challenges.
-    pub plonk_deltas: Vec<F>,
+    // /// Lookup challenges.
+    // pub plonk_deltas: Vec<F>,
 
     /// Point at which the PLONK polynomials are opened.
     pub plonk_zeta: F::Extension,
@@ -273,7 +274,7 @@ pub(crate) struct ProofChallengesTarget<const D: usize> {
     pub plonk_betas: Vec<Target>,
     pub plonk_gammas: Vec<Target>,
     pub plonk_alphas: Vec<Target>,
-    pub plonk_deltas: Vec<Target>,
+    // pub plonk_deltas: Vec<Target>,
     pub plonk_zeta: ExtensionTarget<D>,
     pub fri_challenges: FriChallengesTarget<D>,
 }
@@ -299,8 +300,8 @@ pub struct OpeningSet<F: RichField + Extendable<D>, const D: usize> {
     pub plonk_zs_next: Vec<F::Extension>,
     pub partial_products: Vec<F::Extension>,
     pub quotient_polys: Vec<F::Extension>,
-    pub lookup_zs: Vec<F::Extension>,
-    pub lookup_zs_next: Vec<F::Extension>,
+    // pub lookup_zs: Vec<F::Extension>,
+    // pub lookup_zs_next: Vec<F::Extension>,
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> OpeningSet<F, D> {
@@ -309,7 +310,7 @@ impl<F: RichField + Extendable<D>, const D: usize> OpeningSet<F, D> {
         g: F::Extension,
         constants_sigmas_commitment: &PolynomialBatch<F, C, D>,
         wires_commitment: &PolynomialBatch<F, C, D>,
-        zs_partial_products_lookup_commitment: &PolynomialBatch<F, C, D>,
+        zs_partial_products_commitment: &PolynomialBatch<F, C, D>,
         quotient_polys_commitment: &PolynomialBatch<F, C, D>,
         common_data: &CommonCircuitData<F, D>,
     ) -> Self {
@@ -320,64 +321,34 @@ impl<F: RichField + Extendable<D>, const D: usize> OpeningSet<F, D> {
                 .collect::<Vec<_>>()
         };
         let constants_sigmas_eval = eval_commitment(zeta, constants_sigmas_commitment);
-
-        // `zs_partial_products_lookup_eval` contains the permutation argument polynomials as well as lookup polynomials.
-        let zs_partial_products_lookup_eval =
-            eval_commitment(zeta, zs_partial_products_lookup_commitment);
-        let zs_partial_products_lookup_next_eval =
-            eval_commitment(g * zeta, zs_partial_products_lookup_commitment);
-        let quotient_polys = eval_commitment(zeta, quotient_polys_commitment);
-
+        let zs_partial_products_eval = eval_commitment(zeta, zs_partial_products_commitment);
         Self {
             constants: constants_sigmas_eval[common_data.constants_range()].to_vec(),
             plonk_sigmas: constants_sigmas_eval[common_data.sigmas_range()].to_vec(),
             wires: eval_commitment(zeta, wires_commitment),
-            plonk_zs: zs_partial_products_lookup_eval[common_data.zs_range()].to_vec(),
-            plonk_zs_next: zs_partial_products_lookup_next_eval[common_data.zs_range()].to_vec(),
-            partial_products: zs_partial_products_lookup_eval[common_data.partial_products_range()]
+            plonk_zs: zs_partial_products_eval[common_data.zs_range()].to_vec(),
+            plonk_zs_next: eval_commitment(g * zeta, zs_partial_products_commitment)
+                [common_data.zs_range()]
+            .to_vec(),
+            partial_products: zs_partial_products_eval[common_data.partial_products_range()]
                 .to_vec(),
-            quotient_polys,
-            lookup_zs: zs_partial_products_lookup_eval[common_data.lookup_range()].to_vec(),
-            lookup_zs_next: zs_partial_products_lookup_next_eval[common_data.lookup_range()]
-                .to_vec(),
+            quotient_polys: eval_commitment(zeta, quotient_polys_commitment),
         }
     }
     pub(crate) fn to_fri_openings(&self) -> FriOpenings<F, D> {
-        let has_lookup = !self.lookup_zs.is_empty();
-        let zeta_batch = if has_lookup {
-            FriOpeningBatch {
-                values: [
-                    self.constants.as_slice(),
-                    self.plonk_sigmas.as_slice(),
-                    self.wires.as_slice(),
-                    self.plonk_zs.as_slice(),
-                    self.partial_products.as_slice(),
-                    self.quotient_polys.as_slice(),
-                    self.lookup_zs.as_slice(),
-                ]
-                .concat(),
-            }
-        } else {
-            FriOpeningBatch {
-                values: [
-                    self.constants.as_slice(),
-                    self.plonk_sigmas.as_slice(),
-                    self.wires.as_slice(),
-                    self.plonk_zs.as_slice(),
-                    self.partial_products.as_slice(),
-                    self.quotient_polys.as_slice(),
-                ]
-                .concat(),
-            }
+        let zeta_batch = FriOpeningBatch {
+            values: [
+                self.constants.as_slice(),
+                self.plonk_sigmas.as_slice(),
+                self.wires.as_slice(),
+                self.plonk_zs.as_slice(),
+                self.partial_products.as_slice(),
+                self.quotient_polys.as_slice(),
+            ]
+            .concat(),
         };
-        let zeta_next_batch = if has_lookup {
-            FriOpeningBatch {
-                values: [self.plonk_zs_next.clone(), self.lookup_zs_next.clone()].concat(),
-            }
-        } else {
-            FriOpeningBatch {
-                values: self.plonk_zs_next.clone(),
-            }
+        let zeta_next_batch = FriOpeningBatch {
+            values: self.plonk_zs_next.clone(),
         };
         FriOpenings {
             batches: vec![zeta_batch, zeta_next_batch],
@@ -393,56 +364,31 @@ pub struct OpeningSetTarget<const D: usize> {
     pub wires: Vec<ExtensionTarget<D>>,
     pub plonk_zs: Vec<ExtensionTarget<D>>,
     pub plonk_zs_next: Vec<ExtensionTarget<D>>,
-    pub lookup_zs: Vec<ExtensionTarget<D>>,
-    pub next_lookup_zs: Vec<ExtensionTarget<D>>,
     pub partial_products: Vec<ExtensionTarget<D>>,
     pub quotient_polys: Vec<ExtensionTarget<D>>,
 }
 
 impl<const D: usize> OpeningSetTarget<D> {
     pub(crate) fn to_fri_openings(&self) -> FriOpeningsTarget<D> {
-        let has_lookup = !self.lookup_zs.is_empty();
-        let zeta_batch = if has_lookup {
-            FriOpeningBatchTarget {
-                values: [
-                    self.constants.as_slice(),
-                    self.plonk_sigmas.as_slice(),
-                    self.wires.as_slice(),
-                    self.plonk_zs.as_slice(),
-                    self.partial_products.as_slice(),
-                    self.quotient_polys.as_slice(),
-                    self.lookup_zs.as_slice(),
-                ]
-                .concat(),
-            }
-        } else {
-            FriOpeningBatchTarget {
-                values: [
-                    self.constants.as_slice(),
-                    self.plonk_sigmas.as_slice(),
-                    self.wires.as_slice(),
-                    self.plonk_zs.as_slice(),
-                    self.partial_products.as_slice(),
-                    self.quotient_polys.as_slice(),
-                ]
-                .concat(),
-            }
+        let zeta_batch = FriOpeningBatchTarget {
+            values: [
+                self.constants.as_slice(),
+                self.plonk_sigmas.as_slice(),
+                self.wires.as_slice(),
+                self.plonk_zs.as_slice(),
+                self.partial_products.as_slice(),
+                self.quotient_polys.as_slice(),
+            ]
+            .concat(),
         };
-        let zeta_next_batch = if has_lookup {
-            FriOpeningBatchTarget {
-                values: [self.plonk_zs_next.clone(), self.next_lookup_zs.clone()].concat(),
-            }
-        } else {
-            FriOpeningBatchTarget {
-                values: self.plonk_zs_next.clone(),
-            }
+        let zeta_next_batch = FriOpeningBatchTarget {
+            values: self.plonk_zs_next.clone(),
         };
         FriOpeningsTarget {
             batches: vec![zeta_batch, zeta_next_batch],
         }
     }
 }
-
 #[cfg(test)]
 mod tests {
     use alloc::sync::Arc;

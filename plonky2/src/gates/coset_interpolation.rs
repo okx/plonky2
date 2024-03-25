@@ -188,13 +188,11 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for CosetInterpola
             _phantom: PhantomData,
         })
     }
-
     fn export_circom_verification_code(&self) -> String {
-        unimplemented!()
+        todo!()
     }
-
     fn export_solidity_verification_code(&self) -> String {
-        unimplemented!()
+        todo!()
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {

@@ -1,6 +1,6 @@
 use crate::field::extension::Extendable;
-use crate::hash::hash_types::RichField;
-use crate::iop::target::BoolTarget;
+use crate::hash::hash_types::{HashOutTarget, RichField};
+use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::AlgebraicHasher;
 
@@ -22,5 +22,13 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         swap: BoolTarget,
     ) -> H::AlgebraicPermutation {
         H::permute_swapped(inputs, swap, self)
+    }
+
+    // NOTE: cicrcom_compatability
+    pub fn public_inputs_hash<H: AlgebraicHasher<F>>(
+        &mut self,
+        inputs: Vec<Target>,
+    ) -> HashOutTarget {
+        H::public_inputs_hash(inputs, self)
     }
 }

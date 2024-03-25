@@ -17,7 +17,11 @@ use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
-use crate::plonk::config::{AlgebraicHasher, Hasher};
+use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
+#[cfg(target_feature = "avx2")]
+use super::arch::x86_64::poseidon_goldilocks_avx2::{poseidon_avx};
+
+use super::hash_types::HashOutTarget;
 
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
@@ -596,6 +600,7 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
+    #[cfg(not(target_feature = "avx2"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
@@ -606,6 +611,12 @@ pub trait Poseidon: PrimeField64 {
         debug_assert_eq!(round_ctr, N_ROUNDS);
 
         state
+    }
+
+    #[inline]
+    #[cfg(target_feature = "avx2")]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_avx(&input)
     }
 
     // For testing only, to ensure that various tricks are correct.
@@ -705,12 +716,17 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonHash;
 impl<F: RichField> Hasher<F> for PoseidonHash {
+    const HASHER_TYPE: HasherType = HasherType::Poseidon;
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonPermutation<F>;
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
+    }
+
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
@@ -748,6 +764,16 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
         Self::AlgebraicPermutation::new(
             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
         )
+    }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        HashOutTarget::from_vec(builder.hash_n_to_m_no_pad::<PoseidonHash>(inputs, 4))
     }
 }
 
