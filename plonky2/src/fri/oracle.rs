@@ -290,11 +290,11 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let nums: Vec<usize> = (0..(1<< output_domain_size)).collect();
         let r = nums
             .par_iter()
-            .map(|_i| {
+            .map(|i| {
                 let mut host_data: Vec<F> = vec![F::ZERO; total_num_of_fft];
                 device_transpose_data.copy_to_host_offset(
                     host_data.as_mut_slice(),
-                    0,
+                    i*total_num_of_fft,
                     total_num_of_fft,
                 ).expect("copy to host error");
                 // PolynomialValues::new(host_data).values
