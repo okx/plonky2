@@ -13,7 +13,8 @@ use super::arch::x86_64::poseidon2_goldilocks_avx2::{
 };
 #[cfg(target_feature = "avx2")]
 use super::arch::x86_64::goldilocks_avx2::sbox_avx;
-use super::hash_types::NUM_HASH_OUT_ELTS;
+use super::hash_types::{HashOutTarget, NUM_HASH_OUT_ELTS};
+use super::poseidon::PoseidonHash;
 use crate::field::extension::Extendable;
 use crate::gates::poseidon::PoseidonGate;
 use crate::hash::hash_types::{HashOut, RichField};
@@ -529,6 +530,10 @@ impl<F: RichField + Poseidon2> Hasher<F> for Poseidon2Hash {
             elements: perm.squeeze()[..NUM_HASH_OUT_ELTS].try_into().unwrap(),
         }
     }
+
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        Poseidon2Hash::hash_no_pad(input)
+    }
 }
 
 impl<F: RichField + Poseidon2> AlgebraicHasher<F> for Poseidon2Hash {
@@ -542,25 +547,16 @@ impl<F: RichField + Poseidon2> AlgebraicHasher<F> for Poseidon2Hash {
     where
         F: RichField + Extendable<D>,
     {
-        let gate_type = PoseidonGate::<F, D>::new();
-        let gate = builder.add_gate(gate_type, vec![]);
+        todo!()
+    }
 
-        let swap_wire = PoseidonGate::<F, D>::WIRE_SWAP;
-        let swap_wire = Target::wire(gate, swap_wire);
-        builder.connect(swap.target, swap_wire);
-
-        // Route input wires.
-        let inputs = inputs.as_ref();
-        for i in 0..SPONGE_WIDTH {
-            let in_wire = PoseidonGate::<F, D>::wire_input(i);
-            let in_wire = Target::wire(gate, in_wire);
-            builder.connect(inputs[i], in_wire);
-        }
-
-        // Collect output wires.
-        Self::AlgebraicPermutation::new(
-            (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
-        )
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D> {
+        todo!()
     }
 }
 
