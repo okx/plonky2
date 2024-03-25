@@ -144,7 +144,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let log_n = log2_strict(degree);
 
         #[cfg(feature = "cuda")]
-        if log_n + rate_bits > 10 && polynomials.len() > 0 {
+        if log_n + rate_bits > 1 && polynomials.len() > 0 {
+            println!("invoke from_coeffs_gpu with log_n: {:?}", log_n);
             let lde_values = Self::from_coeffs_gpu(
                 &polynomials,
                 rate_bits,
@@ -232,9 +233,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         let start_lde = std::time::Instant::now();
 
-        // let poly_chunk = polynomials;
-        // let id = 0;
-
         let mut gpu_input: Vec<F> = polynomials
                     .into_iter()
                     .flat_map(
@@ -254,7 +252,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         let mut device_output_data: HostOrDeviceSlice<'_, F> =
             HostOrDeviceSlice::cuda_malloc(0 as i32, total_num_output_elements).unwrap();
-
+        println!("start lde_batch_multi_gpu");
         lde_batch_multi_gpu::<F>(
             device_output_data.as_mut_ptr(),
             gpu_input.as_mut_ptr(),
@@ -299,7 +297,8 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     0,
                     total_num_of_fft,
                 ).expect("copy to host error");
-                PolynomialValues::new(host_data).values
+                // PolynomialValues::new(host_data).values
+                host_data
             })
             .collect::<Vec<Vec<F>>>();
         println!("collect data from gpu used: {:?}", start.elapsed());

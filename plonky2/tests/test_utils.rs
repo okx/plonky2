@@ -12,7 +12,7 @@ pub fn init_cuda() {
     println!("num of gpus: {:?}", num_of_gpus);
     std::env::set_var("NUM_OF_GPUS", num_of_gpus.to_string());
 
-    let log_ns: Vec<usize> = (6..22).collect();
+    let log_ns: Vec<usize> = (2..22).collect();
 
     let mut device_id = 0;
     while device_id < num_of_gpus {
