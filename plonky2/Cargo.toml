@@ -16,7 +16,7 @@ gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]
 timing = ["std"]
-cuda =["cryptography_cuda"]
+cuda =["cryptography_cuda/cuda"]
 no_cuda = ["cryptography_cuda/no_cuda"]
 batch =[]
 
