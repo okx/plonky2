@@ -1,7 +1,5 @@
 //! Implementation of the Poseidon hash function, as described in
 //! <https://eprint.iacr.org/2019/458.pdf>
-
-use alloc::vec;
 use core::iter::repeat;
 use std::fmt::Debug;
 
@@ -14,9 +12,7 @@ use super::arch::x86_64::poseidon2_goldilocks_avx2::{
 #[cfg(target_feature = "avx2")]
 use super::arch::x86_64::goldilocks_avx2::sbox_avx;
 use super::hash_types::{HashOutTarget, NUM_HASH_OUT_ELTS};
-use super::poseidon::PoseidonHash;
 use crate::field::extension::Extendable;
-use crate::gates::poseidon::PoseidonGate;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::PlonkyPermutation;
 use crate::iop::target::{BoolTarget, Target};
@@ -540,9 +536,9 @@ impl<F: RichField + Poseidon2> AlgebraicHasher<F> for Poseidon2Hash {
     type AlgebraicPermutation = Poseidon2Permutation<Target>;
 
     fn permute_swapped<const D: usize>(
-        inputs: Self::AlgebraicPermutation,
-        swap: BoolTarget,
-        builder: &mut CircuitBuilder<F, D>,
+        _inputs: Self::AlgebraicPermutation,
+        _swap: BoolTarget,
+        _builder: &mut CircuitBuilder<F, D>,
     ) -> Self::AlgebraicPermutation
     where
         F: RichField + Extendable<D>,
@@ -551,8 +547,8 @@ impl<F: RichField + Poseidon2> AlgebraicHasher<F> for Poseidon2Hash {
     }
 
     fn public_inputs_hash<const D: usize>(
-        inputs: Vec<Target>,
-        builder: &mut CircuitBuilder<F, D>,
+        _inputs: Vec<Target>,
+        _builder: &mut CircuitBuilder<F, D>,
     ) -> HashOutTarget
     where
         F: RichField + Extendable<D> {

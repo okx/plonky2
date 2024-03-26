@@ -35,5 +35,5 @@ fn test_range_check_proof() {
     let proof = data.prove(pw).unwrap();
 
 
-    data.verify(proof);
+    let _ = data.verify(proof);
 }

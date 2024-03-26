@@ -24,9 +24,11 @@ use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 #[cfg(feature = "cuda")]
 use cryptography_cuda::merkle::bindings::{
-    fill_delete, fill_digests_buf_linear_cpu, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init, get_cap_ptr, get_digests_ptr,
+    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init, get_cap_ptr, get_digests_ptr,
     get_leaves_ptr,
 };
+#[cfg(feature = "cuda")]
+use cryptography_cuda::device::stream::CudaStream;
 
 use std::time::Instant;
 
@@ -78,7 +80,10 @@ impl<F: RichField, H: Hasher<F>> MerkleCap<F, H> {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct MerkleTree<F: RichField, H: Hasher<F>> {
     /// The data in the leaves of the Merkle tree.
-    pub leaves: Vec<Vec<F>>,
+    // pub leaves: Vec<Vec<F>>,
+    leaves: Vec<F>,
+
+    pub leaf_size: usize,
 
     /// The digests in the tree. Consists of `cap.len()` sub-trees, each corresponding to one
     /// element in `cap`. Each subtree is contiguous and located at
@@ -97,6 +102,7 @@ pub struct MerkleTree<F: RichField, H: Hasher<F>> {
 impl<F: RichField, H: Hasher<F>> Default for MerkleTree<F, H> {
     fn default() -> Self {
         Self {
+            leaf_size: 0,
             leaves: Vec::new(),
             digests: Vec::new(),
             cap: MerkleCap::default(),
@@ -374,6 +380,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     }
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
@@ -500,6 +507,110 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
 }
 
 #[cfg(feature = "cuda")]
+fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves_ptr: *const F,
+    leaves_len: usize,
+    leaf_len: usize,
+    cap_height: usize,
+) {
+    let digests_count: u64 = digests_buf.len().try_into().unwrap();
+    let leaves_count: u64 = leaves_len.try_into().unwrap();
+    let caps_count: u64 = cap_buf.len().try_into().unwrap();
+    let cap_height: u64 = cap_height.try_into().unwrap();
+    let leaf_size: u64 = leaf_len.try_into().unwrap();
+
+    let _lock = gpu_lock.lock().unwrap();
+
+        let now = Instant::now();
+        // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
+    let digests_size = if digests_buf.len() == 0 {
+        NUM_HASH_OUT_ELTS
+    } else {
+        digests_buf.len() * NUM_HASH_OUT_ELTS
+    };
+    let caps_size = if cap_buf.len() == 0 {
+        NUM_HASH_OUT_ELTS
+    } else {
+        cap_buf.len() * NUM_HASH_OUT_ELTS
+    };
+
+        let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
+            HostOrDeviceSlice::cuda_malloc(0 as i32, digests_size)
+                .unwrap();
+        let mut gpu_cap_buf: HostOrDeviceSlice<'_, F> =
+            HostOrDeviceSlice::cuda_malloc(0 as i32, caps_size)
+                .unwrap();
+
+                unsafe{
+        fill_digests_buf_linear_gpu_with_gpu_ptr(
+            gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+            gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+            leaves_ptr as *mut core::ffi::c_void,
+            digests_count,
+            caps_count,
+            leaves_count,
+            leaf_size,
+            cap_height,
+            H::HASHER_TYPE as u64,
+        );
+    }
+        print_time(now, "fill init");
+
+        let mut host_digests: Vec<F> = vec![F::ZERO; digests_size];
+        let mut host_caps: Vec<F> = vec![F::ZERO; caps_size];
+        let stream1 = CudaStream::create().unwrap();
+        let stream2 = CudaStream::create().unwrap();
+
+        gpu_digests_buf.copy_to_host_async(host_digests.as_mut_slice(), &stream1).expect("copy digests");
+        gpu_cap_buf.copy_to_host_async(host_caps.as_mut_slice(), &stream2).expect("copy caps");
+        stream1.synchronize().expect("cuda sync");
+        stream2.synchronize().expect("cuda sync");
+        stream1.destroy().expect("cuda stream destroy");
+        stream2.destroy().expect("cuda stream destroy");
+
+        let now = Instant::now();
+
+        if digests_buf.len() > 0 {
+            host_digests
+                .par_chunks_exact(4)
+                .zip(digests_buf)
+                .for_each(|(x, y)| {
+                    unsafe {
+                        let mut parts = U8U64 { f1: [0; 32] };
+                        parts.f2[0] = x[0].to_canonical_u64();
+                        parts.f2[1] = x[1].to_canonical_u64();
+                        parts.f2[2] = x[2].to_canonical_u64();
+                        parts.f2[3] = x[3].to_canonical_u64();
+                        let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+                        let h: H::Hash = H::Hash::from_bytes(slice);
+                        y.write(h);
+                    };
+                });
+        }
+
+        if cap_buf.len() > 0 {
+            host_caps
+                .par_chunks_exact(4)
+                .zip(cap_buf)
+                .for_each(|(x, y)| {
+                    unsafe {
+                        let mut parts = U8U64 { f1: [0; 32] };
+                        parts.f2[0] = x[0].to_canonical_u64();
+                        parts.f2[1] = x[1].to_canonical_u64();
+                        parts.f2[2] = x[2].to_canonical_u64();
+                        parts.f2[3] = x[3].to_canonical_u64();
+                        let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+                        let h: H::Hash = H::Hash::from_bytes(slice);
+                        y.write(h);
+                    };
+                });
+        }
+        print_time(now, "copy results");
+    }
+
+#[cfg(feature = "cuda")]
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
@@ -528,8 +639,8 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
-    pub fn new(leaves: Vec<Vec<F>>, cap_height: usize) -> Self {
-        let log2_leaves_len = log2_strict(leaves.len());
+    pub fn new(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
+        let log2_leaves_len = log2_strict(leaves_2d.len());
         assert!(
             cap_height <= log2_leaves_len,
             "cap_height={} should be at most log2(leaves.len())={}",
@@ -537,7 +648,10 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             log2_leaves_len
         );
 
-        let num_digests = 2 * (leaves.len() - (1 << cap_height));
+        let leaf_size = leaves_2d[0].len();
+        let leaves_len = leaves_2d.len();
+
+        let num_digests = 2 * (leaves_len - (1 << cap_height));
         let mut digests = Vec::with_capacity(num_digests);
 
         let len_cap = 1 << cap_height;
@@ -546,8 +660,8 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
         let now = Instant::now();
-        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
-        print_time(now, "fill digests buffer");        
+        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves_2d[..], cap_height);
+        print_time(now, "fill digests buffer");
 
         unsafe {
             // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
@@ -565,21 +679,110 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             println!("{:?}", dg);
         }
         */
+        let leaves_1d = leaves_2d.into_iter().flatten().collect();
+
         Self {
-            leaves,
+            leaves: leaves_1d,
+            leaf_size,
+            digests,
+            cap: MerkleCap(cap),
+        }
+    }
+
+    pub fn new_from_fields(
+        leaves_1d: Vec<F>,
+        leaf_size: usize,
+        digests: Vec<H::Hash>,
+        cap: MerkleCap<F, H>,
+    ) -> Self {
+        Self {
+            leaves: leaves_1d,
+            leaf_size,
+            digests,
+            cap,
+        }
+    }
+
+    #[cfg(feature = "cuda")]
+    pub fn new_gpu_leaves(leaves_gpu_ptr: HostOrDeviceSlice<'_, F>, leaves_len: usize, leaf_len: usize, cap_height: usize) -> Self {
+        let log2_leaves_len = log2_strict(leaves_len);
+        assert!(
+            cap_height <= log2_leaves_len,
+            "cap_height={} should be at most log2(leaves.len())={}",
+            cap_height,
+            log2_leaves_len
+        );
+
+        // copy data from GPU in async mode
+        let start = std::time::Instant::now();
+        let mut host_leaves: Vec<F> = vec![F::ZERO; leaves_len * leaf_len];
+        let stream = CudaStream::create().unwrap();
+        leaves_gpu_ptr.copy_to_host_async(
+            host_leaves.as_mut_slice(),
+            &stream
+        ).expect("copy to host error");
+        print_time(start, "Copy leaves from GPU");
+
+        let num_digests = 2 * (leaves_len - (1 << cap_height));
+        let mut digests = Vec::with_capacity(num_digests);
+
+        let len_cap = 1 << cap_height;
+        let mut cap = Vec::with_capacity(len_cap);
+
+        let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
+        let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
+        let now = Instant::now();
+        fill_digests_buf_gpu_ptr::<F,H>(
+            digests_buf,
+            cap_buf,
+            leaves_gpu_ptr.as_ptr(),
+            leaves_len,
+            leaf_len,
+            cap_height,
+        );
+        print_time(now, "fill digests buffer");
+
+        unsafe {
+            // SAFETY: `fill_digests_buf` and `cap` initialized the spare capacity up to
+            // `num_digests` and `len_cap`, resp.
+            digests.set_len(num_digests);
+            cap.set_len(len_cap);
+        }
+        /*
+        println!{"Digest Buffer"};
+        for dg in &digests {
+            println!("{:?}", dg);
+        }
+        println!{"Cap Buffer"};
+        for dg in &cap {
+            println!("{:?}", dg);
+        }
+        */
+        let _ = stream.synchronize();
+        let _ = stream.destroy();
+
+        Self {
+            leaves: host_leaves,
+            leaf_size: leaf_len,
             digests,
             cap: MerkleCap(cap),
         }
     }
 
     pub fn get(&self, i: usize) -> &[F] {
-        &self.leaves[i]
+        let (_ , v) = self.leaves.split_at(i * self.leaf_size);
+        let (v, _) = v.split_at(self.leaf_size);
+        v
+    }
+
+    pub fn get_leaves_count(&self) -> usize {
+        self.leaves.len() / self.leaf_size
     }
 
     /// Create a Merkle proof from a leaf index.
     pub fn prove(&self, leaf_index: usize) -> MerkleProof<F, H> {
         let cap_height = log2_strict(self.cap.len());
-        let num_layers = log2_strict(self.leaves.len()) - cap_height;
+        let num_layers = log2_strict(self.get_leaves_count()) - cap_height;
         let subtree_digest_size = (1 << (num_layers + 1)) - 2; // 2 ^ (k+1) - 2
         let subtree_idx = leaf_index / (1 << num_layers);
 
