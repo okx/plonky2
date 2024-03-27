@@ -124,39 +124,44 @@ fn capacity_up_to_mut<T>(v: &mut Vec<T>, len: usize) -> &mut [MaybeUninit<T>] {
 
 fn fill_subtree<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &[F],
+    leaf_size: usize,
 ) -> H::Hash {
+    let leaves_count = leaves.len() / leaf_size;
+
     // if one leaf => return it hash
-    if leaves.len() == 1 {
-        let hash = H::hash_or_noop(&leaves[0]);
+    if leaves_count == 1 {
+        let hash = H::hash_or_noop(leaves);
         digests_buf[0].write(hash);
         return hash;
     }
     // if two leaves => return their concat hash
-    if leaves.len() == 2 {
-        let hash_left = H::hash_or_noop(&leaves[0]);
-        let hash_right = H::hash_or_noop(&leaves[1]);
+    if leaves_count == 2 {
+        let (leaf1, leaf2) = leaves.split_at(leaf_size);
+        let hash_left = H::hash_or_noop(leaf1);
+        let hash_right = H::hash_or_noop(leaf2);
         digests_buf[0].write(hash_left);
         digests_buf[1].write(hash_right);
         return H::two_to_one(hash_left, hash_right);
     }
 
-    assert_eq!(leaves.len(), digests_buf.len() / 2 + 1);
+    assert_eq!(leaves_count, digests_buf.len() / 2 + 1);
 
     // leaves first - we can do all in parallel
-    let (_, digests_leaves) = digests_buf.split_at_mut(digests_buf.len() - leaves.len());
+    let (_, digests_leaves) = digests_buf.split_at_mut(digests_buf.len() - leaves_count);
     digests_leaves
         .into_par_iter()
-        .zip(leaves)
-        .for_each(|(digest, leaf)| {
+        .enumerate()
+        .for_each(|(leaf_idx, digest)| {
+            let (_, r) = leaves.split_at(leaf_idx * leaf_size);
+            let (leaf, _) = r.split_at(leaf_size);
             digest.write(H::hash_or_noop(leaf));
         });
 
     // internal nodes - we can do in parallel per level
-    let mut last_index = digests_buf.len() - leaves.len();
+    let mut last_index = digests_buf.len() - leaves_count;
 
-    log2_strict(leaves.len());
-    for level_log in range(1, log2_strict(leaves.len())).rev() {
+    for level_log in range(1, log2_strict(leaves_count)).rev() {
         let level_size = 1 << level_log;
         let (_, digests_slice) = digests_buf.split_at_mut(last_index - level_size);
         let (digests_slice, next_digests) = digests_slice.split_at_mut(level_size);
@@ -190,27 +195,32 @@ fn fill_subtree<F: RichField, H: Hasher<F>>(
 fn fill_digests_buf<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
     cap_height: usize,
 ) {
     // Special case of a tree that's all cap. The usual case will panic because we'll try to split
     // an empty slice into chunks of `0`. (We would not need this if there was a way to split into
     // `blah` chunks as opposed to chunks _of_ `blah`.)
+    let leaves_count = leaves.len() / leaf_size;
+
     if digests_buf.is_empty() {
-        debug_assert_eq!(cap_buf.len(), leaves.len());
+        debug_assert_eq!(cap_buf.len(), leaves_count);
         cap_buf
             .par_iter_mut()
-            .zip(leaves)
-            .for_each(|(cap_buf, leaf)| {
+            .enumerate()
+            .for_each(|(leaf_idx, cap_buf)| {
+                let (_, r) = leaves.split_at(leaf_idx * leaf_size);
+                let (leaf, _) = r.split_at(leaf_size);
                 cap_buf.write(H::hash_or_noop(leaf));
             });
         return;
     }
 
     let subtree_digests_len = digests_buf.len() >> cap_height;
-    let subtree_leaves_len = leaves.len() >> cap_height;
+    let subtree_leaves_len = leaves_count >> cap_height;
     let digests_chunks = digests_buf.par_chunks_exact_mut(subtree_digests_len);
-    let leaves_chunks = leaves.par_chunks_exact(subtree_leaves_len);
+    let leaves_chunks = leaves.par_chunks_exact(subtree_leaves_len * leaf_size);
     assert_eq!(digests_chunks.len(), cap_buf.len());
     assert_eq!(digests_chunks.len(), leaves_chunks.len());
     digests_chunks.zip(cap_buf).zip(leaves_chunks).for_each(
@@ -218,7 +228,7 @@ fn fill_digests_buf<F: RichField, H: Hasher<F>>(
             // We have `1 << cap_height` sub-trees, one for each entry in `cap`. They are totally
             // independent, so we schedule one task for each. `digests_buf` and `leaves` are split
             // into `1 << cap_height` slices, one for each sub-tree.
-            subtree_cap.write(fill_subtree::<F, H>(subtree_digests, subtree_leaves));
+            subtree_cap.write(fill_subtree::<F, H>(subtree_digests, subtree_leaves, leaf_size));
         },
     );
 
@@ -254,14 +264,15 @@ union U8U64 {
 fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
     cap_height: usize,
 ) {
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
-    let leaves_count: u64 = leaves.len().try_into().unwrap();
+    let leaves_count: u64 = (leaves.len() / leaf_size).try_into().unwrap();
+    let leaf_size: u64 = leaf_size.try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
     let cap_height: u64 = cap_height.try_into().unwrap();
-    let leaf_size: u64 = leaves[0].len().try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
 
     let _lock = gpu_lock.lock().unwrap();
@@ -284,28 +295,12 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         let mut pl: *mut u64 = get_leaves_ptr();
         let mut pc: *mut u64 = get_cap_ptr();
 
-        for leaf in leaves {
-            for elem in leaf {
-                let val = &elem.to_canonical_u64();
-                *pl = *val;
-                pl = pl.add(1);
-            }
+        for elem in leaves {
+            let val = &elem.to_canonical_u64();
+            *pl = *val;
+            pl = pl.add(1);
         }
 
-        /*
-        let lc = leaves.len();
-        leaves.into_iter().enumerate().for_each(
-            |(i, leaf)| {
-                let mut p = pl;
-                p = p.add(i);
-                for elem in leaf {
-                    let val = &elem.to_canonical_u64();
-                    *p = *val;
-                    p = p.add(lc);
-                }
-            }
-        );
-        */
         print_time(now, "copy data to C");
         let now = Instant::now();
 
@@ -385,18 +380,17 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
 fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
     cap_height: usize,
 ) {
-    let _lock = gpu_lock.lock().unwrap();
-
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
-    let leaves_count: u64 = leaves.len().try_into().unwrap();
+    let leaves_count: u64 = (leaves.len() / leaf_size).try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
     let cap_height: u64 = cap_height.try_into().unwrap();
-    let leaf_size: u64 = leaves[0].len().try_into().unwrap();
+    let leaf_size: u64 = leaf_size.try_into().unwrap();
 
-    let leaves_size = leaves.len() * leaves[0].len();
+    let leaves_size = leaves.len();
 
     let now = Instant::now();
 
@@ -412,8 +406,9 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         cap_buf.len() * NUM_HASH_OUT_ELTS
     };
 
-    // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
+    let _lock = gpu_lock.lock().unwrap();
 
+    // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
         HostOrDeviceSlice::cuda_malloc(0, leaves_size).unwrap();
     let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
@@ -427,11 +422,9 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     // let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
 
     // v1: use 2 for loops - better than flatten()
-    let mut leaves1 = Vec::with_capacity(leaves.len() * leaves[0].len());
-    for leaf in leaves {
-        for el in leaf {
-            leaves1.push(el.clone());
-        }
+    let mut leaves1 = Vec::with_capacity(leaves_size);
+    for el in leaves {
+        leaves1.push(el.clone());
     }
     /*
     // v2: use par chunks - same performance
@@ -614,17 +607,16 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
     cap_height: usize,
 ) {
-    use crate::plonk::config::HasherType;
-
-    let leaf_size = leaves[0].len();
     // if the input is small or if it Keccak hashing, just do the hashing on CPU
+    use crate::plonk::config::HasherType;
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
-        fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
-        fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+        fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     }
 }
 
@@ -632,24 +624,23 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &[Vec<F>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
     cap_height: usize,
 ) {
-    fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves[..], cap_height);
+    fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
-    pub fn new(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
-        let log2_leaves_len = log2_strict(leaves_2d.len());
+    pub fn new_from_1d(leaves_1d: Vec<F>, leaf_size: usize, cap_height: usize) -> Self {
+        let leaves_len = leaves_1d.len() / leaf_size;
+        let log2_leaves_len = log2_strict(leaves_len);
         assert!(
             cap_height <= log2_leaves_len,
             "cap_height={} should be at most log2(leaves.len())={}",
             cap_height,
             log2_leaves_len
         );
-
-        let leaf_size = leaves_2d[0].len();
-        let leaves_len = leaves_2d.len();
 
         let num_digests = 2 * (leaves_len - (1 << cap_height));
         let mut digests = Vec::with_capacity(num_digests);
@@ -660,7 +651,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
         let now = Instant::now();
-        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves_2d[..], cap_height);
+        fill_digests_buf_meta::<F, H>(digests_buf, cap_buf, &leaves_1d, leaf_size, cap_height);
         print_time(now, "fill digests buffer");
 
         unsafe {
@@ -679,14 +670,18 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             println!("{:?}", dg);
         }
         */
-        let leaves_1d = leaves_2d.into_iter().flatten().collect();
-
         Self {
             leaves: leaves_1d,
             leaf_size,
             digests,
             cap: MerkleCap(cap),
         }
+    }
+
+    pub fn new_from_2d(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
+        let leaf_size = leaves_2d[0].len();
+        let leaves_1d = leaves_2d.into_iter().flatten().collect();
+        Self::new_from_1d(leaves_1d, leaf_size, cap_height)
     }
 
     pub fn new_from_fields(
@@ -835,7 +830,7 @@ mod tests {
         leaves: Vec<Vec<F>>,
         cap_height: usize,
     ) -> Result<()> {
-        let tree = MerkleTree::<F, C::Hasher>::new(leaves.clone(), cap_height);
+        let tree = MerkleTree::<F, C::Hasher>::new_from_2d(leaves.clone(), cap_height);
         for (i, leaf) in leaves.into_iter().enumerate() {
             let proof = tree.prove(i);
             verify_merkle_proof_to_cap(leaf, i, &tree.cap, &proof)?;
@@ -854,7 +849,7 @@ mod tests {
         let cap_height = log_n + 1; // Should panic if `cap_height > len_n`.
 
         let leaves = random_data::<F>(1 << log_n, 7);
-        let _ = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new(leaves, cap_height);
+        let _ = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves, cap_height);
     }
 
     #[test]

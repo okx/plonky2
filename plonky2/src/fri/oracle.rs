@@ -3,7 +3,8 @@ use alloc::vec::Vec;
 
 #[cfg(feature = "cuda")]
 use cryptography_cuda::{
-    device::memory::HostOrDeviceSlice, lde_batch, lde_batch_multi_gpu, transpose_rev_batch, types::*,
+    device::memory::HostOrDeviceSlice, lde_batch, lde_batch_multi_gpu, transpose_rev_batch,
+    types::*,
 };
 use itertools::Itertools;
 use plonky2_field::types::Field;
@@ -151,7 +152,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let merkle_tree = timed!(
             timing,
             "build Merkle tree",
-            MerkleTree::new(leaves, cap_height)
+            MerkleTree::new_from_2d(leaves, cap_height)
         );
 
         Self {
@@ -178,7 +179,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             blinding,
             cap_height,
             timing,
-            fft_root_table
+            fft_root_table,
         )
     }
 
@@ -200,7 +201,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 .parse()
                 .unwrap();
 
-            println!("invoke from_coeffs_gpu with log_n: {:?}", log_n);
             let merkle_tree = Self::from_coeffs_gpu(
                 &polynomials,
                 rate_bits,
@@ -209,7 +209,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 timing,
                 fft_root_table,
                 log_n,
-                degree
+                degree,
             );
 
             return Self {
@@ -219,15 +219,14 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 rate_bits,
                 blinding,
             };
-        }
-        else {
+        } else {
             Self::from_coeffs_cpu(
                 polynomials,
                 rate_bits,
                 blinding,
                 cap_height,
                 timing,
-                fft_root_table
+                fft_root_table,
             )
         }
     }
@@ -236,16 +235,15 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     pub fn from_coeffs_gpu(
         polynomials: &[PolynomialCoeffs<F>],
         rate_bits: usize,
-        blinding: bool,
+        _blinding: bool,
         cap_height: usize,
-        _timing: &mut TimingTree,
+        timing: &mut TimingTree,
         _fft_root_table: Option<&FftRootTable<F>>,
         log_n: usize,
-        _degree: usize
-    )-> MerkleTree<F, <C as GenericConfig<D>>::Hasher> {
-
-        let salt_size = if blinding { SALT_SIZE } else { 0 };
-        println!("salt_size: {:?}", salt_size);
+        _degree: usize,
+    ) -> MerkleTree<F, <C as GenericConfig<D>>::Hasher> {
+        // let salt_size = if blinding { SALT_SIZE } else { 0 };
+        // println!("salt_size: {:?}", salt_size);
         let output_domain_size = log_n + rate_bits;
 
         let num_gpus: usize = std::env::var("NUM_OF_GPUS")
@@ -253,45 +251,44 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .parse()
             .unwrap();
         // let num_gpus: usize = 1;
-
-        println!("get num of gpus: {:?}", num_gpus);
+        // println!("get num of gpus: {:?}", num_gpus);
         let total_num_of_fft = polynomials.len();
-        println!("total_num_of_fft: {:?}", total_num_of_fft);
+        // println!("total_num_of_fft: {:?}", total_num_of_fft);
 
         let total_num_input_elements = total_num_of_fft * (1 << log_n);
         let total_num_output_elements = total_num_of_fft * (1 << output_domain_size);
 
-        let start_lde = std::time::Instant::now();
-
         let mut gpu_input: Vec<F> = polynomials
-                    .into_iter()
-                    .flat_map(
-                        |v|
-                        v.coeffs.iter().cloned()
-                    )
-                    .collect();
+            .into_iter()
+            .flat_map(|v| v.coeffs.iter().cloned())
+            .collect();
 
         let mut cfg_lde = NTTConfig::default();
-                cfg_lde.batches = total_num_of_fft as u32;
-                cfg_lde.extension_rate_bits = rate_bits as u32;
-                cfg_lde.are_inputs_on_device = false;
-                cfg_lde.are_outputs_on_device = true;
-                cfg_lde.with_coset = true;
-                cfg_lde.is_multi_gpu = true;
-
+        cfg_lde.batches = total_num_of_fft as u32;
+        cfg_lde.extension_rate_bits = rate_bits as u32;
+        cfg_lde.are_inputs_on_device = false;
+        cfg_lde.are_outputs_on_device = true;
+        cfg_lde.with_coset = true;
+        cfg_lde.is_multi_gpu = true;
 
         let mut device_output_data: HostOrDeviceSlice<'_, F> =
             HostOrDeviceSlice::cuda_malloc(0 as i32, total_num_output_elements).unwrap();
-            if num_gpus == 1 {
-                println!("start lde_batch_gpu");
-                lde_batch(0,
+        if num_gpus == 1 {
+            let _ = timed!(
+                timing,
+                "LDE on 1 GPU",
+                lde_batch(
+                    0,
                     device_output_data.as_mut_ptr(),
                     gpu_input.as_mut_ptr(),
                     log_n,
-                    cfg_lde.clone());
-            }
-            else {
-                println!("start lde_batch_multi_gpu");
+                    cfg_lde.clone()
+                )
+            );
+        } else {
+            let _ = timed!(
+                timing,
+                "LDE on multi GPU",
                 lde_batch_multi_gpu::<F>(
                     device_output_data.as_mut_ptr(),
                     gpu_input.as_mut_ptr(),
@@ -300,9 +297,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     log_n,
                     total_num_input_elements,
                     total_num_output_elements,
-                );
-            }
-        println!("real lde_batch elapsed: {:?}", start_lde.elapsed());
+                )
+            );
+        }
 
         let mut cfg_trans = TransposeConfig::default();
         cfg_trans.batches = total_num_of_fft as u32;
@@ -310,22 +307,30 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         cfg_trans.are_outputs_on_device = true;
 
         let mut device_transpose_data: HostOrDeviceSlice<'_, F> =
-            HostOrDeviceSlice::cuda_malloc(0 as i32, total_num_output_elements)
-                .unwrap();
+            HostOrDeviceSlice::cuda_malloc(0 as i32, total_num_output_elements).unwrap();
 
-        let start = std::time::Instant::now();
-        transpose_rev_batch(
-            0 as i32,
-            device_transpose_data.as_mut_ptr(),
-            device_output_data.as_mut_ptr(),
-            output_domain_size,
-            cfg_trans
+        let _ = timed!(
+            timing,
+            "transpose",
+            transpose_rev_batch(
+                0 as i32,
+                device_transpose_data.as_mut_ptr(),
+                device_output_data.as_mut_ptr(),
+                output_domain_size,
+                cfg_trans
+            )
         );
-        println!("real transpose_rev_batch elapsed: {:?}", start.elapsed());
 
-        let start = std::time::Instant::now();
-        let mt = MerkleTree::new_gpu_leaves(device_transpose_data, 1<<output_domain_size, total_num_of_fft, cap_height);
-        println!("real transpose_rev_batch elapsed: {:?}", start.elapsed());
+        let mt = timed!(
+            timing,
+            "Merkle tree with GPU data",
+            MerkleTree::new_gpu_leaves(
+                device_transpose_data,
+                1 << output_domain_size,
+                total_num_of_fft,
+                cap_height
+            )
+        );
         mt
     }
 
@@ -348,7 +353,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-                // let num_gpus: usize = 1;
+        // let num_gpus: usize = 1;
         #[cfg(all(feature = "cuda", feature = "batch"))]
         println!("get num of gpus: {:?}", num_gpus);
         let total_num_of_fft = polynomials.len();
@@ -370,7 +375,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 .par_chunks(chunk_size)
                 .enumerate()
                 .flat_map(|(id, poly_chunk)| {
-
                     println!(
                         "invoking ntt_batch, device_id: {:?}, per_device_batch: {:?}",
                         id, per_device_batch
@@ -380,8 +384,11 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
                     let input_domain_size = 1 << log2_strict(degree);
                     let device_input_data: HostOrDeviceSlice<'_, F> =
-                        HostOrDeviceSlice::cuda_malloc(id as i32, input_domain_size * polynomials.len())
-                            .unwrap();
+                        HostOrDeviceSlice::cuda_malloc(
+                            id as i32,
+                            input_domain_size * polynomials.len(),
+                        )
+                        .unwrap();
                     let device_input_data = std::sync::RwLock::new(device_input_data);
 
                     poly_chunk.par_iter().enumerate().for_each(|(i, p)| {

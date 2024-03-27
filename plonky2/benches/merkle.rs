@@ -24,8 +24,13 @@ pub(crate) fn bench_merkle_tree<F: RichField, H: Hasher<F>>(c: &mut Criterion) {
     for size_log in [13, 14, 15] {
         let size = 1 << size_log;
         group.bench_with_input(BenchmarkId::from_parameter(size), &size, |b, _| {
-            let leaves = vec![F::rand_vec(ELEMS_PER_LEAF); size];
-            b.iter(|| MerkleTree::<F, H>::new(leaves.clone(), 0));
+            // let leaves = vec![F::rand_vec(ELEMS_PER_LEAF); size];
+            // b.iter(|| MerkleTree::<F, H>::new_from_2d(leaves.clone(), 0));
+            let mut leaves = Vec::with_capacity(size * ELEMS_PER_LEAF);
+            for _ in 0..size {
+                leaves.append(&mut F::rand_vec(ELEMS_PER_LEAF));
+            }
+            b.iter(|| MerkleTree::<F, H>::new_from_1d(leaves.clone(), ELEMS_PER_LEAF, 0));
         });
     }
 }
