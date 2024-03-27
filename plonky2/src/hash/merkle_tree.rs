@@ -443,6 +443,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
 
     unsafe {
         fill_digests_buf_linear_gpu_with_gpu_ptr(
+            0 as i32,
             gpu_digests_buf.as_mut_ptr() as *mut c_void,
             gpu_caps_buf.as_mut_ptr() as *mut c_void,
             gpu_leaves_buf.as_ptr() as *mut c_void,
@@ -538,6 +539,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
                 unsafe{
         fill_digests_buf_linear_gpu_with_gpu_ptr(
+            0 as i32,
             gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
             gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
             leaves_ptr as *mut core::ffi::c_void,
@@ -696,6 +698,21 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             digests,
             cap,
         }
+    }
+
+    pub fn change_leaf_and_update(&mut self, leaf: Vec<F>, leaf_index: usize) {
+        assert_eq!(leaf.len(), self.leaf_size);
+        let leaves_count = self.leaves.len() / self.leaf_size;
+        assert!(leaf_index < leaves_count);
+        let cap_height = log2_strict(self.cap.len());
+        let mut leaves = self.leaves.clone();
+        let start = leaf_index * self.leaf_size;
+        leaf.into_iter().enumerate().for_each(|(i, el)| leaves[start + i] = el);
+        // TODO: replace this with something better
+        let new_tree = MerkleTree::<F,H>::new_from_1d(leaves, self.leaf_size, cap_height);
+        self.leaves = new_tree.leaves;
+        self.cap = new_tree.cap;
+        self.digests = new_tree.digests;
     }
 
     #[cfg(feature = "cuda")]
