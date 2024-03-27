@@ -770,6 +770,19 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         v
     }
 
+    pub fn get_leaves_1D(&self) -> Vec<F> {
+        self.leaves.clone()
+    }
+
+    pub fn get_leaves_2D(&self) -> Vec<Vec<F>> {
+        let v2d : Vec<Vec<F>> = self.leaves.chunks_exact(self.leaf_size).map(
+            |leaf| {
+                leaf.to_vec()
+            }
+        ).collect();
+        v2d
+    }
+
     pub fn get_leaves_count(&self) -> usize {
         self.leaves.len() / self.leaf_size
     }
