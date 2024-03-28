@@ -325,12 +325,13 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
             timing,
             "Merkle tree with GPU data",
             MerkleTree::new_from_gpu_leaves(
-                device_transpose_data,
+                &device_transpose_data,
                 1 << output_domain_size,
                 total_num_of_fft,
                 cap_height
             )
         );
+        // println!("GPU ptr {:p}", device_transpose_data.as_ptr());
         mt
     }
 

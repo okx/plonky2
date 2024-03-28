@@ -30,7 +30,7 @@ pub(crate) fn bench_merkle_tree<F: RichField, H: Hasher<F>>(c: &mut Criterion) {
             for _ in 0..size {
                 leaves.append(&mut F::rand_vec(ELEMS_PER_LEAF));
             }
-            b.iter(|| MerkleTree::<F, H>::new_from_1d(leaves.clone(), ELEMS_PER_LEAF, 0));
+            b.iter(|| MerkleTree::<F, H>::new_from_1d(leaves.clone(), ELEMS_PER_LEAF, 2));
         });
     }
 }

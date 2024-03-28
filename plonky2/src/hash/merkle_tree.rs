@@ -15,7 +15,8 @@ use cryptography_cuda::device::memory::HostOrDeviceSlice;
 use cryptography_cuda::device::stream::CudaStream;
 #[cfg(feature = "cuda")]
 use cryptography_cuda::merkle::bindings::{
-    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr, fill_init,
+    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr,
+    fill_digests_buf_linear_multigpu, fill_digests_buf_linear_multigpu_with_gpu_ptr, fill_init,
     get_cap_ptr, get_digests_ptr, get_leaves_ptr,
 };
 use num::range;
@@ -29,6 +30,8 @@ use crate::hash::hash_types::RichField;
 use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
 use crate::hash::merkle_proofs::MerkleProof;
 use crate::plonk::config::{GenericHashOut, Hasher};
+#[cfg(feature = "cuda")]
+use crate::plonk::config::HasherType;
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
@@ -304,14 +307,35 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
         print_time(now, "copy data to C");
         let now = Instant::now();
 
+        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            .expect("NUM_OF_GPUS should be set")
+            .parse()
+            .unwrap();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
-        fill_digests_buf_linear_gpu(
-            digests_count,
-            caps_count,
-            leaves_count,
-            leaf_size,
-            cap_height,
-        );
+        if leaves_count >= (1 << 12)
+            && cap_height > 0
+            && num_gpus > 1
+            && H::HASHER_TYPE == HasherType::PoseidonBN128
+        {
+            // println!("Multi GPU");
+            fill_digests_buf_linear_multigpu(
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+                num_gpus as u64,
+            );
+        } else {
+            // println!("Single GPU");
+            fill_digests_buf_linear_gpu(
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+            );
+        }
 
         print_time(now, "kernel");
         let now = Instant::now();
@@ -442,17 +466,41 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     let now = Instant::now();
 
     unsafe {
-        fill_digests_buf_linear_gpu_with_gpu_ptr(
-            gpu_digests_buf.as_mut_ptr() as *mut c_void,
-            gpu_caps_buf.as_mut_ptr() as *mut c_void,
-            gpu_leaves_buf.as_ptr() as *mut c_void,
-            digests_count,
-            caps_count,
-            leaves_count,
-            leaf_size,
-            cap_height,
-            H::HASHER_TYPE as u64,
-        )
+        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            .expect("NUM_OF_GPUS should be set")
+            .parse()
+            .unwrap();
+        if leaves_count >= (1 << 12)
+            && cap_height > 0
+            && num_gpus > 1
+            && H::HASHER_TYPE == HasherType::PoseidonBN128
+        {
+            // println!("Multi GPU");
+            fill_digests_buf_linear_multigpu_with_gpu_ptr(
+                gpu_digests_buf.as_mut_ptr() as *mut c_void,
+                gpu_caps_buf.as_mut_ptr() as *mut c_void,
+                gpu_leaves_buf.as_ptr() as *mut c_void,
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+                H::HASHER_TYPE as u64,
+            );
+        } else {
+            // println!("Single GPU");
+            fill_digests_buf_linear_gpu_with_gpu_ptr(
+                gpu_digests_buf.as_mut_ptr() as *mut c_void,
+                gpu_caps_buf.as_mut_ptr() as *mut c_void,
+                gpu_leaves_buf.as_ptr() as *mut c_void,
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+                H::HASHER_TYPE as u64,
+            );
+        }
     };
     print_time(now, "kernel");
     let now = Instant::now();
@@ -535,17 +583,41 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
         HostOrDeviceSlice::cuda_malloc(0 as i32, caps_size).unwrap();
 
     unsafe {
-        fill_digests_buf_linear_gpu_with_gpu_ptr(
-            gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            leaves_ptr as *mut core::ffi::c_void,
-            digests_count,
-            caps_count,
-            leaves_count,
-            leaf_size,
-            cap_height,
-            H::HASHER_TYPE as u64,
-        );
+        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+            .expect("NUM_OF_GPUS should be set")
+            .parse()
+            .unwrap();
+        if leaves_count >= (1 << 12)
+            && cap_height > 0
+            && num_gpus > 1
+            && H::HASHER_TYPE == HasherType::PoseidonBN128
+        {
+            // println!("Multi GPU");
+            fill_digests_buf_linear_multigpu_with_gpu_ptr(
+                gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                leaves_ptr as *mut core::ffi::c_void,
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+                H::HASHER_TYPE as u64,
+            );
+        } else {
+            // println!("Single GPU");
+            fill_digests_buf_linear_gpu_with_gpu_ptr(
+                gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                leaves_ptr as *mut core::ffi::c_void,
+                digests_count,
+                caps_count,
+                leaves_count,
+                leaf_size,
+                cap_height,
+                H::HASHER_TYPE as u64,
+            );
+        }
     }
     print_time(now, "fill init");
 
@@ -613,8 +685,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaf_size: usize,
     cap_height: usize,
 ) {
-    // if the input is small or if it Keccak hashing, just do the hashing on CPU
-    use crate::plonk::config::HasherType;
+    // if the input is small or if it Keccak hashing, just do the hashing on CPU    
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
@@ -702,7 +773,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
     #[cfg(feature = "cuda")]
     pub fn new_from_gpu_leaves(
-        leaves_gpu_ptr: HostOrDeviceSlice<'_, F>,
+        leaves_gpu_ptr: &HostOrDeviceSlice<'_, F>,
         leaves_len: usize,
         leaf_len: usize,
         cap_height: usize,
@@ -814,21 +885,22 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             cap_buf[leaf_index].write(H::hash_or_noop(leaf_copy.as_slice()));
         } else {
             let subtree_leaves_len = leaves_count >> cap_height;
-            let subtree_idx = leaf_index / subtree_leaves_len;            
+            let subtree_idx = leaf_index / subtree_leaves_len;
             let subtree_digests_len = digests_buf.len() >> cap_height;
             let subtree_offset = subtree_idx * subtree_digests_len;
-            let idx_in_subtree = subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
+            let idx_in_subtree =
+                subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
 
             if subtree_leaves_len == 2 {
                 digests_buf[subtree_offset + idx_in_subtree]
                     .write(H::hash_or_noop(leaf_copy.as_slice()));
             } else {
                 assert!(subtree_leaves_len > 2);
-                let idx = subtree_offset + idx_in_subtree;                                    
+                let idx = subtree_offset + idx_in_subtree;
                 digests_buf[idx].write(H::hash_or_noop(leaf_copy.as_slice()));
                 let mut child_idx: i64 = idx_in_subtree as i64;
-                let mut parent_idx: i64 = (child_idx - 1) / 2;                
-                while child_idx > 1 {                    
+                let mut parent_idx: i64 = (child_idx - 1) / 2;
+                while child_idx > 1 {
                     unsafe {
                         let mut left_digest = digests_buf[child_idx as usize].assume_init();
                         let mut right_digest = digests_buf[child_idx as usize + 1].assume_init();
@@ -917,7 +989,7 @@ mod tests {
         Ok(())
     }
 
-    fn verify_change_leaf_and_update(log_n: usize, cap_h: usize) {       
+    fn verify_change_leaf_and_update(log_n: usize, cap_h: usize) {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -936,7 +1008,7 @@ mod tests {
         mt1.change_leaf_and_update(tmp[0].clone(), 0);
 
         /*
-        println!("Tree 1");       
+        println!("Tree 1");
         mt1.digests.into_iter().for_each(
             |x| {
                 println!("{:?}", x);
@@ -949,7 +1021,7 @@ mod tests {
             }
         );
         */
-        
+
         mt1.digests
             .into_par_iter()
             .zip(mt2.digests)
@@ -1008,7 +1080,7 @@ mod tests {
 
         // big tree
         verify_change_leaf_and_update(12, 3);
-        
+
         Ok(())
     }
 
@@ -1049,7 +1121,7 @@ mod tests {
             .copy_from_host(leaves_1d.as_slice())
             .expect("copy data to gpu");
 
-        MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_gpu_leaves(gpu_data, n, 7, 1);
+        MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_gpu_leaves(&gpu_data, n, 7, 1);
 
         Ok(())
     }
