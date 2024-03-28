@@ -733,13 +733,14 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         );
 
         // copy data from GPU in async mode
-        let start = std::time::Instant::now();
         let mut host_leaves: Vec<F> = vec![F::ZERO; leaves_len * leaf_len];
-        let stream = CudaStream::create().unwrap();
+        let stream_copy = CudaStream::create().unwrap();
+
+        let start = std::time::Instant::now();
         leaves_gpu_ptr
-            .copy_to_host_async(host_leaves.as_mut_slice(), &stream)
+            .copy_to_host_async(host_leaves.as_mut_slice(), &stream_copy)
             .expect("copy to host error");
-        print_time(start, "Copy leaves from GPU");
+        print_time(start, "copy leaves from GPU async");
 
         let num_digests = 2 * (leaves_len - (1 << cap_height));
         let mut digests = Vec::with_capacity(num_digests);
@@ -776,8 +777,8 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             println!("{:?}", dg);
         }
         */
-        let _ = stream.synchronize();
-        let _ = stream.destroy();
+        let _ = stream_copy.synchronize();
+        let _ = stream_copy.destroy();
 
         Self {
             leaves: host_leaves,
@@ -920,6 +921,26 @@ mod tests {
         let leaves = random_data::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[cfg(feature = "cuda")]
+    #[test]
+    fn test_merkle_trees_cuda_poseidon_g64() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let log_n = 14;
+        let n = 1 << log_n;
+        let leaves = random_data::<F>(n, 7);
+        let leaves_1d: Vec<F> = leaves.into_iter().flatten().collect();
+        
+        let mut gpu_data: HostOrDeviceSlice<'_, F> = HostOrDeviceSlice::cuda_malloc(0, n * 7).unwrap();
+        gpu_data.copy_from_host(leaves_1d.as_slice()).expect("copy data to gpu");
+
+        MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_gpu_leaves(gpu_data, n, 7, 1);
 
         Ok(())
     }
