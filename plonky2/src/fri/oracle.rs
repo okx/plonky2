@@ -324,7 +324,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let mt = timed!(
             timing,
             "Merkle tree with GPU data",
-            MerkleTree::new_gpu_leaves(
+            MerkleTree::new_from_gpu_leaves(
                 device_transpose_data,
                 1 << output_domain_size,
                 total_num_of_fft,

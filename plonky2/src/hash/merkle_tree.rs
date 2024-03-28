@@ -700,25 +700,8 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         }
     }
 
-    pub fn change_leaf_and_update(&mut self, leaf: Vec<F>, leaf_index: usize) {
-        assert_eq!(leaf.len(), self.leaf_size);
-        let leaves_count = self.leaves.len() / self.leaf_size;
-        assert!(leaf_index < leaves_count);
-        let cap_height = log2_strict(self.cap.len());
-        let mut leaves = self.leaves.clone();
-        let start = leaf_index * self.leaf_size;
-        leaf.into_iter()
-            .enumerate()
-            .for_each(|(i, el)| leaves[start + i] = el);
-        // TODO: replace this with something better
-        let new_tree = MerkleTree::<F, H>::new_from_1d(leaves, self.leaf_size, cap_height);
-        self.leaves = new_tree.leaves;
-        self.cap = new_tree.cap;
-        self.digests = new_tree.digests;
-    }
-
     #[cfg(feature = "cuda")]
-    pub fn new_gpu_leaves(
+    pub fn new_from_gpu_leaves(
         leaves_gpu_ptr: HostOrDeviceSlice<'_, F>,
         leaves_len: usize,
         leaf_len: usize,
@@ -811,6 +794,63 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         self.leaves.len() / self.leaf_size
     }
 
+    pub fn change_leaf_and_update(&mut self, leaf: Vec<F>, leaf_index: usize) {
+        assert_eq!(leaf.len(), self.leaf_size);
+        let leaves_count = self.leaves.len() / self.leaf_size;
+        assert!(leaf_index < leaves_count);
+        let cap_height = log2_strict(self.cap.len());
+        let mut leaves = self.leaves.clone();
+        let start = leaf_index * self.leaf_size;
+        let leaf_copy = leaf.clone();
+        leaf.into_iter()
+            .enumerate()
+            .for_each(|(i, el)| leaves[start + i] = el);
+
+        let digests_len = self.digests.len();
+        let cap_len = self.cap.0.len();
+        let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
+        let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        if digests_buf.is_empty() {
+            cap_buf[leaf_index].write(H::hash_or_noop(leaf_copy.as_slice()));
+        } else {
+            let subtree_leaves_len = leaves_count >> cap_height;
+            let subtree_idx = leaf_index / subtree_leaves_len;            
+            let subtree_digests_len = digests_buf.len() >> cap_height;
+            let subtree_offset = subtree_idx * subtree_digests_len;
+            let idx_in_subtree = subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
+
+            if subtree_leaves_len == 2 {
+                digests_buf[subtree_offset + idx_in_subtree]
+                    .write(H::hash_or_noop(leaf_copy.as_slice()));
+            } else {
+                assert!(subtree_leaves_len > 2);
+                let idx = subtree_offset + idx_in_subtree;                                    
+                digests_buf[idx].write(H::hash_or_noop(leaf_copy.as_slice()));
+                let mut child_idx: i64 = idx_in_subtree as i64;
+                let mut parent_idx: i64 = (child_idx - 1) / 2;                
+                while child_idx > 1 {                    
+                    unsafe {
+                        let mut left_digest = digests_buf[child_idx as usize].assume_init();
+                        let mut right_digest = digests_buf[child_idx as usize + 1].assume_init();
+                        if idx_in_subtree & 1 == 1 {
+                            left_digest = digests_buf[child_idx as usize - 1].assume_init();
+                            right_digest = digests_buf[child_idx as usize].assume_init();
+                        }
+                        digests_buf[parent_idx as usize]
+                            .write(H::two_to_one(left_digest, right_digest));
+                    }
+                    child_idx = parent_idx;
+                    parent_idx = (child_idx - 1) / 2;
+                }
+            }
+            unsafe {
+                let left_digest = digests_buf[subtree_offset].assume_init();
+                let right_digest = digests_buf[subtree_offset + 1].assume_init();
+                cap_buf[subtree_idx].write(H::two_to_one(left_digest, right_digest));
+            }
+        }
+    }
+
     /// Create a Merkle proof from a leaf index.
     pub fn prove(&self, leaf_index: usize) -> MerkleProof<F, H> {
         let cap_height = log2_strict(self.cap.len());
@@ -877,6 +917,55 @@ mod tests {
         Ok(())
     }
 
+    fn verify_change_leaf_and_update(log_n: usize, cap_h: usize) {       
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let n = 1 << log_n;
+        let k = 7;
+        let mut leaves = random_data::<F>(n, k);
+
+        let mut mt1 =
+            MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves.clone(), cap_h);
+
+        let tmp = random_data::<F>(1, k);
+        leaves[0] = tmp[0].clone();
+        let mt2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves, cap_h);
+
+        mt1.change_leaf_and_update(tmp[0].clone(), 0);
+
+        /*
+        println!("Tree 1");       
+        mt1.digests.into_iter().for_each(
+            |x| {
+                println!("{:?}", x);
+            }
+        );
+        println!("Tree 2");
+        mt2.digests.into_iter().for_each(
+            |x| {
+                println!("{:?}", x);
+            }
+        );
+        */
+        
+        mt1.digests
+            .into_par_iter()
+            .zip(mt2.digests)
+            .for_each(|(d1, d2)| {
+                assert_eq!(d1, d2);
+            });
+
+        mt1.cap
+            .0
+            .into_par_iter()
+            .zip(mt2.cap.0)
+            .for_each(|(d1, d2)| {
+                assert_eq!(d1, d2);
+            });
+    }
+
     #[test]
     #[should_panic]
     fn test_cap_height_too_big() {
@@ -903,6 +992,23 @@ mod tests {
 
         verify_all_leaves::<F, C, D>(leaves, log_n)?;
 
+        Ok(())
+    }
+
+    #[test]
+    fn test_change_leaf_and_update() -> Result<()> {
+        // small tree, 1 cap
+        verify_change_leaf_and_update(3, 0);
+        // small tree, 2 cap
+        verify_change_leaf_and_update(3, 1);
+        // small tree, 4 cap
+        verify_change_leaf_and_update(3, 2);
+        // small tree, all cap
+        verify_change_leaf_and_update(3, 3);
+
+        // big tree
+        verify_change_leaf_and_update(12, 3);
+        
         Ok(())
     }
 
@@ -936,11 +1042,14 @@ mod tests {
         let n = 1 << log_n;
         let leaves = random_data::<F>(n, 7);
         let leaves_1d: Vec<F> = leaves.into_iter().flatten().collect();
-        
-        let mut gpu_data: HostOrDeviceSlice<'_, F> = HostOrDeviceSlice::cuda_malloc(0, n * 7).unwrap();
-        gpu_data.copy_from_host(leaves_1d.as_slice()).expect("copy data to gpu");
 
-        MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_gpu_leaves(gpu_data, n, 7, 1);
+        let mut gpu_data: HostOrDeviceSlice<'_, F> =
+            HostOrDeviceSlice::cuda_malloc(0, n * 7).unwrap();
+        gpu_data
+            .copy_from_host(leaves_1d.as_slice())
+            .expect("copy data to gpu");
+
+        MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_gpu_leaves(gpu_data, n, 7, 1);
 
         Ok(())
     }
