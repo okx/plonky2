@@ -331,7 +331,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                 cap_height
             )
         );
-        // println!("GPU ptr {:p}", device_transpose_data.as_ptr());
         mt
     }
 
