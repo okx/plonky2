@@ -64,6 +64,9 @@ pub trait Gate<F: RichField + Extendable<D>, const D: usize>: 'static + Send + S
     where
         Self: Sized;
 
+    fn export_circom_verification_code(&self) -> String;
+    fn export_solidity_verification_code(&self) -> String;
+
     /// Defines and evaluates the constraints that enforce the statement represented by this gate.
     /// Constraints must be defined in the extension of this custom gate base field.
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension>;
@@ -323,7 +326,7 @@ pub struct PrefixedGate<F: RichField + Extendable<D>, const D: usize> {
 }
 
 /// A gate's filter designed so that it is non-zero if `s = row`.
-fn compute_filter<K: Field>(row: usize, group_range: Range<usize>, s: K, many_selector: bool) -> K {
+pub fn compute_filter<K: Field>(row: usize, group_range: Range<usize>, s: K, many_selector: bool) -> K {
     debug_assert!(group_range.contains(&row));
     group_range
         .filter(|&i| i != row)
@@ -332,7 +335,7 @@ fn compute_filter<K: Field>(row: usize, group_range: Range<usize>, s: K, many_se
         .product()
 }
 
-fn compute_filter_circuit<F: RichField + Extendable<D>, const D: usize>(
+pub fn compute_filter_circuit<F: RichField + Extendable<D>, const D: usize>(
     builder: &mut CircuitBuilder<F, D>,
     row: usize,
     group_range: Range<usize>,

@@ -8,3 +8,10 @@ pgo-data.profdata
 
 # MacOS nuisances
 .DS_Store
+
+**/generated
+docs/**bench**
+
+**/*/libposeidon-permute-c-mac.a
+**/*/go-iden3-crypto/
+.vscode

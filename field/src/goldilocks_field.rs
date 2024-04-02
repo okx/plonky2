@@ -6,9 +6,16 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 use num::{BigUint, Integer, ToPrimitive};
 use plonky2_util::{assume, branch_hint};
 use serde::{Deserialize, Serialize};
+#[cfg(feature = "precompile")]
+use plonky2_util::{log2_strict};
 
+#[cfg(feature = "precompile")]
+use crate::fft::FftRootTable;
 use crate::ops::Square;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
+
+#[cfg(feature = "precompile")]
+use crate::PRE_COMPUTE_ROOT_TABLES;
 
 const EPSILON: u64 = (1 << 32) - 1;
 
@@ -72,7 +79,6 @@ impl Field for GoldilocksField {
     const ONE: Self = Self(1);
     const TWO: Self = Self(2);
     const NEG_ONE: Self = Self(Self::ORDER - 1);
-
     const TWO_ADICITY: usize = 32;
     const CHARACTERISTIC_TWO_ADICITY: usize = Self::TWO_ADICITY;
 
@@ -88,11 +94,19 @@ impl Field for GoldilocksField {
 
     const BITS: usize = 64;
 
+    const CUDA_SUPPORT: bool = true;
+
     fn order() -> BigUint {
         Self::ORDER.into()
     }
     fn characteristic() -> BigUint {
         Self::order()
+    }
+
+    #[cfg(feature = "precompile")]
+    fn pre_compute_fft_root_table(input_len: usize) -> Option<&'static FftRootTable<Self>> {
+        let lg_n = log2_strict(input_len);
+        PRE_COMPUTE_ROOT_TABLES.get(&lg_n)
     }
 
     /// Returns the inverse of the field element, using Fermat's little theorem.

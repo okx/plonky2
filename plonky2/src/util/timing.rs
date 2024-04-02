@@ -1,6 +1,7 @@
-use log::{log, Level};
 #[cfg(feature = "timing")]
-use web_time::{Duration, Instant};
+use std::time::{Duration, Instant};
+
+use log::{ Level};
 
 /// The hierarchy of scopes, and the time consumed by each one. Useful for profiling.
 #[cfg(feature = "timing")]
@@ -159,8 +160,8 @@ impl TimingTree {
     #[cfg(feature = "timing")]
     fn print_helper(&self, depth: usize) {
         let prefix = "| ".repeat(depth);
-        log!(
-            self.level,
+        println!(
+            // self.level,
             "{}{:.4}s to {}",
             prefix,
             self.duration().as_secs_f64(),

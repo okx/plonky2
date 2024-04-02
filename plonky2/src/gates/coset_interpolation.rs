@@ -192,6 +192,14 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for CosetInterpola
         })
     }
 
+    fn export_circom_verification_code(&self) -> String {
+        unimplemented!()
+    }
+
+    fn export_solidity_verification_code(&self) -> String {
+        unimplemented!()
+    }
+
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let mut constraints = Vec::with_capacity(self.num_constraints());
 
