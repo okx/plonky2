@@ -16,7 +16,7 @@ use serde::Serialize;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::goldilocks_field::GoldilocksField;
-use crate::hash::hash_types::{HashOut, RichField};
+use crate::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use crate::hash::hashing::PlonkyPermutation;
 use crate::hash::keccak::KeccakHash;
 use crate::hash::poseidon::PoseidonHash;
@@ -46,6 +46,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
     /// However, it is still collision-resistant in cases where the input has a fixed length.
     fn hash_no_pad(input: &[F]) -> Self::Hash;
+    fn hash_public_inputs(input: &[F]) -> Self::Hash;
 
     /// Pad the message using the `pad10*1` rule, then hash it.
     fn hash_pad(input: &[F]) -> Self::Hash {
@@ -87,6 +88,14 @@ pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
         swap: BoolTarget,
         builder: &mut CircuitBuilder<F, D>,
     ) -> Self::AlgebraicPermutation
+    where
+        F: RichField + Extendable<D>;
+    
+     /// Circuit to calculate hash out for public inputs.
+     fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
     where
         F: RichField + Extendable<D>;
 }

@@ -23,7 +23,7 @@ use crate::plonk::vars::{
     EvaluationTargets, EvaluationVars, EvaluationVarsBase, EvaluationVarsBaseBatch,
     EvaluationVarsBasePacked,
 };
-use crate::util::serialization::{Buffer, IoResult, Read, Write};
+use crate::util::serialization::{Buffer, IoResult};
 
 pub type Lookup = Vec<(Target, Target)>;
 
@@ -74,29 +74,30 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for LookupGate {
         )
     }
 
-    fn serialize(&self, dst: &mut Vec<u8>, common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
-        dst.write_usize(self.num_slots)?;
-        for (i, lut) in common_data.luts.iter().enumerate() {
-            if lut == &self.lut {
-                dst.write_usize(i)?;
-                return dst.write_all(&self.lut_hash);
-            }
-        }
+    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+        // dst.write_usize(self.num_slots)?;
+        // for (i, lut) in common_data.luts.iter().enumerate() {
+        //     if lut == &self.lut {
+        //         dst.write_usize(i)?;
+        //         return dst.write_all(&self.lut_hash);
+        //     }
+        // }
 
         panic!("The associated lookup table couldn't be found.")
     }
 
-    fn deserialize(src: &mut Buffer, common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
-        let num_slots = src.read_usize()?;
-        let lut_index = src.read_usize()?;
-        let mut lut_hash = [0u8; 32];
-        src.read_exact(&mut lut_hash)?;
+    fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
+        todo!()
+        // let num_slots = src.read_usize()?;
+        // let lut_index = src.read_usize()?;
+        // let mut lut_hash = [0u8; 32];
+        // src.read_exact(&mut lut_hash)?;
 
-        Ok(Self {
-            num_slots,
-            lut: common_data.luts[lut_index].clone(),
-            lut_hash,
-        })
+        // Ok(Self {
+        //     num_slots,
+        //     lut: common_data.luts[lut_index].clone(),
+        //     lut_hash,
+        // })
     }
 
     fn export_circom_verification_code(&self) -> String {
@@ -218,27 +219,29 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D> for Loo
         };
     }
 
-    fn serialize(&self, dst: &mut Vec<u8>, common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
-        dst.write_usize(self.row)?;
-        dst.write_usize(self.slot_nb)?;
-        for (i, lut) in common_data.luts.iter().enumerate() {
-            if lut == &self.lut {
-                return dst.write_usize(i);
-            }
-        }
+    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+        todo!()
+        // dst.write_usize(self.row)?;
+        // dst.write_usize(self.slot_nb)?;
+        // for (i, lut) in common_data.luts.iter().enumerate() {
+        //     if lut == &self.lut {
+        //         return dst.write_usize(i);
+        //     }
+        // }
 
-        panic!("The associated lookup table couldn't be found.")
+        // panic!("The associated lookup table couldn't be found.")
     }
 
-    fn deserialize(src: &mut Buffer, common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
-        let row = src.read_usize()?;
-        let slot_nb = src.read_usize()?;
-        let lut_index = src.read_usize()?;
+    fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
+        todo!()
+        // let row = src.read_usize()?;
+        // let slot_nb = src.read_usize()?;
+        // let lut_index = src.read_usize()?;
 
-        Ok(Self {
-            row,
-            lut: common_data.luts[lut_index].clone(),
-            slot_nb,
-        })
+        // Ok(Self {
+        //     row,
+        //     lut: common_data.luts[lut_index].clone(),
+        //     slot_nb,
+        // })
     }
 }

@@ -20,7 +20,7 @@ use core::ops::{Range, RangeFrom};
 use anyhow::Result;
 use serde::Serialize;
 
-use super::circuit_builder::LookupWire;
+
 use crate::field::extension::Extendable;
 use crate::field::fft::FftRootTable;
 use crate::field::types::Field;
@@ -32,8 +32,8 @@ use crate::fri::structure::{
 };
 use crate::fri::{FriConfig, FriParams};
 use crate::gates::gate::GateRef;
-use crate::gates::lookup::Lookup;
-use crate::gates::lookup_table::LookupTable;
+
+
 use crate::gates::selectors::SelectorsInfo;
 use crate::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_tree::MerkleCap;
@@ -359,10 +359,10 @@ pub struct ProverOnlyCircuitData<
     /// A digest of the "circuit" (i.e. the instance, minus public inputs), which can be used to
     /// seed Fiat-Shamir.
     pub circuit_digest: <<C as GenericConfig<D>>::Hasher as Hasher<F>>::Hash,
-    ///The concrete placement of the lookup gates for each lookup table index.
-    pub lookup_rows: Vec<LookupWire>,
-    /// A vector of (looking_in, looking_out) pairs for for each lookup table index.
-    pub lut_to_lookups: Vec<Lookup>,
+    // ///The concrete placement of the lookup gates for each lookup table index.
+    // pub lookup_rows: Vec<LookupWire>,
+    // /// A vector of (looking_in, looking_out) pairs for for each lookup table index.
+    // pub lut_to_lookups: Vec<Lookup>,
 }
 
 impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
@@ -441,14 +441,14 @@ pub struct CommonCircuitData<F: RichField + Extendable<D>, const D: usize> {
     /// The number of partial products needed to compute the `Z` polynomials.
     pub num_partial_products: usize,
 
-    /// The number of lookup polynomials.
-    pub num_lookup_polys: usize,
+    // /// The number of lookup polynomials.
+    // pub num_lookup_polys: usize,
 
-    /// The number of lookup selectors.
-    pub num_lookup_selectors: usize,
+    // /// The number of lookup selectors.
+    // pub num_lookup_selectors: usize,
 
-    /// The stored lookup tables.
-    pub luts: Vec<LookupTable>,
+    // /// The stored lookup tables.
+    // pub luts: Vec<LookupTable>,
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
@@ -520,10 +520,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
     }
 
     /// Range of lookup polynomials needed for evaluation at `g * zeta`.
-    pub const fn next_lookup_range(&self, i: usize) -> Range<usize> {
-        self.num_zs_partial_products_polys() + i * self.num_lookup_polys
-            ..self.num_zs_partial_products_polys() + i * self.num_lookup_polys + 2
-    }
+    // pub fn next_lookup_range(&self, i: usize) -> Range<usize> {
+    //     self.num_zs_partial_products_polys() + i * self.num_lookup_polys
+    //         ..self.num_zs_partial_products_polys() + i * self.num_lookup_polys + 2
+    // }
 
     pub(crate) fn get_fri_instance(&self, zeta: F::Extension) -> FriInstanceInfo<F, D> {
         // All polynomials are opened at zeta.
@@ -537,7 +537,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         let zeta_next = g * zeta;
         let zeta_next_batch = FriBatchInfo {
             point: zeta_next,
-            polynomials: self.fri_next_batch_polys(),
+            polynomials: self.fri_zs_polys(),
         };
 
         let openings = vec![zeta_batch, zeta_next_batch];
@@ -563,7 +563,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         let zeta_next = builder.mul_const_extension(g, zeta);
         let zeta_next_batch = FriBatchInfoTarget {
             point: zeta_next,
-            polynomials: self.fri_next_batch_polys(),
+            polynomials: self.fri_zs_polys(),
         };
 
         let openings = vec![zeta_batch, zeta_next_batch];
@@ -584,7 +584,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
                 blinding: PlonkOracle::WIRES.blinding,
             },
             FriOracleInfo {
-                num_polys: self.num_zs_partial_products_polys() + self.num_all_lookup_polys(),
+                num_polys: self.num_zs_partial_products_polys(),
                 blinding: PlonkOracle::ZS_PARTIAL_PRODUCTS.blinding,
             },
             FriOracleInfo {
@@ -621,32 +621,15 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         self.config.num_challenges * (1 + self.num_partial_products)
     }
 
-    /// Returns the total number of lookup polynomials.
-    pub(crate) const fn num_all_lookup_polys(&self) -> usize {
-        self.config.num_challenges * self.num_lookup_polys
-    }
     fn fri_zs_polys(&self) -> Vec<FriPolynomialInfo> {
         FriPolynomialInfo::from_range(PlonkOracle::ZS_PARTIAL_PRODUCTS.index, self.zs_range())
-    }
-
-    /// Returns polynomials that require evaluation at `zeta` and `g * zeta`.
-    fn fri_next_batch_polys(&self) -> Vec<FriPolynomialInfo> {
-        [self.fri_zs_polys(), self.fri_lookup_polys()].concat()
     }
 
     fn fri_quotient_polys(&self) -> Vec<FriPolynomialInfo> {
         FriPolynomialInfo::from_range(PlonkOracle::QUOTIENT.index, 0..self.num_quotient_polys())
     }
 
-    /// Returns the information for lookup polynomials, i.e. the index within the oracle and the indices of the polynomials within the commitment.
-    fn fri_lookup_polys(&self) -> Vec<FriPolynomialInfo> {
-        FriPolynomialInfo::from_range(
-            PlonkOracle::ZS_PARTIAL_PRODUCTS.index,
-            self.num_zs_partial_products_polys()
-                ..self.num_zs_partial_products_polys() + self.num_all_lookup_polys(),
-        )
-    }
-    pub(crate) const fn num_quotient_polys(&self) -> usize {
+    pub(crate) fn num_quotient_polys(&self) -> usize {
         self.config.num_challenges * self.quotient_degree_factor
     }
 
@@ -656,7 +639,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
             self.fri_wire_polys(),
             self.fri_zs_partial_products_polys(),
             self.fri_quotient_polys(),
-            self.fri_lookup_polys(),
         ]
         .concat()
     }

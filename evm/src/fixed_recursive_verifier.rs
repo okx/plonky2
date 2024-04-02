@@ -515,7 +515,7 @@ where
         let public_values = add_virtual_public_values(&mut builder);
 
         let recursive_proofs =
-            core::array::from_fn(|i| builder.add_virtual_proof_with_pis(inner_common_data[i]));
+            core::array::from_fn(|i| builder.add_virtual_proof_with_pis::<C>(inner_common_data[i]));
         let pis: [_; NUM_TABLES] = core::array::from_fn(|i| {
             PublicInputs::<Target, <C::Hasher as AlgebraicHasher<F>>::AlgebraicPermutation>::from_vec(
                 &recursive_proofs[i].public_inputs,
@@ -754,8 +754,8 @@ where
         let common = &root.circuit.common;
         let root_vk = builder.constant_verifier_data(&root.circuit.verifier_only);
         let is_agg = builder.add_virtual_bool_target_safe();
-        let agg_proof = builder.add_virtual_proof_with_pis(common);
-        let evm_proof = builder.add_virtual_proof_with_pis(common);
+        let agg_proof = builder.add_virtual_proof_with_pis::<C>(common);
+        let evm_proof = builder.add_virtual_proof_with_pis::<C>(common);
         builder
             .conditionally_verify_cyclic_proof::<C>(
                 is_agg, &agg_proof, &evm_proof, &root_vk, common,
@@ -782,8 +782,8 @@ where
         let mut builder = CircuitBuilder::<F, D>::new(CircuitConfig::standard_recursion_config());
         let public_values = add_virtual_public_values(&mut builder);
         let has_parent_block = builder.add_virtual_bool_target_safe();
-        let parent_block_proof = builder.add_virtual_proof_with_pis(&expected_common_data);
-        let agg_root_proof = builder.add_virtual_proof_with_pis(&agg.circuit.common);
+        let parent_block_proof = builder.add_virtual_proof_with_pis::<C>(&expected_common_data);
+        let agg_root_proof = builder.add_virtual_proof_with_pis::<C>(&agg.circuit.common);
 
         // Connect block hashes
         Self::connect_block_hashes(&mut builder, &parent_block_proof, &agg_root_proof);
@@ -1588,6 +1588,7 @@ where
             THRESHOLD_DEGREE_BITS,
         );
         let mut shrinking_wrappers = vec![];
+   
 
         // Shrinking recursion loop.
         loop {
@@ -1602,7 +1603,8 @@ where
             }
 
             let mut builder = CircuitBuilder::new(shrinking_config());
-            let proof_with_pis_target = builder.add_virtual_proof_with_pis(&last.common);
+            let proof_with_pis_target =
+                builder.add_virtual_proof_with_pis::<C>(&last.common);
             let last_vk = builder.constant_verifier_data(&last.verifier_only);
             builder.verify_proof::<C>(&proof_with_pis_target, &last_vk, &last.common);
             builder.register_public_inputs(&proof_with_pis_target.public_inputs); // carry PIs forward
