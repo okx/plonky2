@@ -3,14 +3,11 @@
 // put it in `src/bin/`, but then we wouldn't have access to
 // `[dev-dependencies]`.
 
-<<<<<<< HEAD
-=======
 #[cfg(not(feature = "std"))]
 extern crate alloc;
 
 #[cfg(not(feature = "std"))]
 use alloc::sync::Arc;
->>>>>>> upstream/main
 use core::num::ParseIntError;
 use core::ops::RangeInclusive;
 use core::str::FromStr;

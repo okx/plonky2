@@ -130,18 +130,9 @@ fn test_one_lookup() -> anyhow::Result<()> {
 
 // Tests one lookup in two different lookup tables.
 #[test]
-<<<<<<< HEAD
 #[ignore]
-pub fn test_two_luts() -> anyhow::Result<()> {
-    use crate::field::types::Field;
-    use crate::iop::witness::{PartialWitness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::circuit_data::CircuitConfig;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
-=======
 fn test_two_luts() -> anyhow::Result<()> {
     init_logger();
->>>>>>> upstream/main
 
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
@@ -215,18 +206,9 @@ fn test_two_luts() -> anyhow::Result<()> {
 }
 
 #[test]
-<<<<<<< HEAD
 #[ignore]
-pub fn test_different_inputs() -> anyhow::Result<()> {
-    use crate::field::types::Field;
-    use crate::iop::witness::{PartialWitness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::circuit_data::CircuitConfig;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
-=======
 fn test_different_inputs() -> anyhow::Result<()> {
     init_logger();
->>>>>>> upstream/main
 
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
@@ -302,18 +284,9 @@ fn test_different_inputs() -> anyhow::Result<()> {
 
 // This test looks up over 514 values for one LookupTableGate, which means that several LookupGates are created.
 #[test]
-<<<<<<< HEAD
 #[ignore]
-pub fn test_many_lookups() -> anyhow::Result<()> {
-    use crate::field::types::Field;
-    use crate::iop::witness::{PartialWitness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::circuit_data::CircuitConfig;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
-=======
 fn test_many_lookups() -> anyhow::Result<()> {
     init_logger();
->>>>>>> upstream/main
 
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
@@ -394,18 +367,9 @@ fn test_many_lookups() -> anyhow::Result<()> {
 
 // Tests whether, when adding the same LUT to the circuit, the circuit only adds one copy, with the same index.
 #[test]
-<<<<<<< HEAD
 #[ignore]
-pub fn test_same_luts() -> anyhow::Result<()> {
-    use crate::field::types::Field;
-    use crate::iop::witness::{PartialWitness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::circuit_data::CircuitConfig;
-    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
-=======
 fn test_same_luts() -> anyhow::Result<()> {
     init_logger();
->>>>>>> upstream/main
 
     let config = CircuitConfig::standard_recursion_config();
     let mut builder = CircuitBuilder::<F, D>::new(config);
