@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 #[cfg(feature = "cuda")]
-use cryptography_cuda::{intt, ntt, types::NTTInputOutputOrder};
+use cryptography_cuda::{ntt, types::NTTInputOutputOrder};
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 use unroll::unroll_for_loops;
 
@@ -34,6 +34,7 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     root_table
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fft_dispatch_gpu<F: Field>(
     input: &mut [F],

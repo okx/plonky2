@@ -107,7 +107,7 @@ pub fn compress<F: Field, P: PlonkyPermutation<F>>(x: HashOut<F>, y: HashOut<F>)
     debug_assert_eq!(y.elements.len(), NUM_HASH_OUT_ELTS);
     debug_assert!(P::RATE >= NUM_HASH_OUT_ELTS);
 
-    let mut perm = P::new(core::iter::repeat(F::ZERO));
+    let mut perm = P::new(repeat(F::ZERO));
     perm.set_from_slice(&x.elements, 0);
     perm.set_from_slice(&y.elements, NUM_HASH_OUT_ELTS);
     perm.set_from_iter(repeat(F::ZERO), 8);
