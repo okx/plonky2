@@ -12,10 +12,11 @@
 //! The verifier data can similarly be extracted by calling [`CircuitData::verifier_data`].
 //! This is useful to allow even small devices to verify plonky2 proofs.
 
-use alloc::collections::BTreeMap;
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{collections::BTreeMap, vec, vec::Vec};
 use core::ops::{Range, RangeFrom};
+#[cfg(feature = "std")]
+use std::collections::BTreeMap;
 
 use anyhow::Result;
 use serde::Serialize;
@@ -251,6 +252,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 /// structure as succinct as we can. Thus we include various precomputed data which isn't strictly
 /// required, like LDEs of preprocessed polynomials. If more succinctness was desired, we could
 /// construct a more minimal prover structure and convert back and forth.
+#[derive(Debug)]
 pub struct ProverCircuitData<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -621,6 +623,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         self.config.num_challenges * (1 + self.num_partial_products)
     }
 
+    /// Returns the total number of lookup polynomials.
+    // pub(crate) const fn num_all_lookup_polys(&self) -> usize {
+    //     self.config.num_challenges * self.num_lookup_polys
+    // }
     fn fri_zs_polys(&self) -> Vec<FriPolynomialInfo> {
         FriPolynomialInfo::from_range(PlonkOracle::ZS_PARTIAL_PRODUCTS.index, self.zs_range())
     }
@@ -629,7 +635,15 @@ impl<F: RichField + Extendable<D>, const D: usize> CommonCircuitData<F, D> {
         FriPolynomialInfo::from_range(PlonkOracle::QUOTIENT.index, 0..self.num_quotient_polys())
     }
 
-    pub(crate) fn num_quotient_polys(&self) -> usize {
+    /// Returns the information for lookup polynomials, i.e. the index within the oracle and the indices of the polynomials within the commitment.
+    // fn fri_lookup_polys(&self) -> Vec<FriPolynomialInfo> {
+    //     FriPolynomialInfo::from_range(
+    //         PlonkOracle::ZS_PARTIAL_PRODUCTS.index,
+    //         self.num_zs_partial_products_polys()
+    //             ..self.num_zs_partial_products_polys() + self.num_all_lookup_polys(),
+    //     )
+    // }
+    pub(crate) const fn num_quotient_polys(&self) -> usize {
         self.config.num_challenges * self.quotient_degree_factor
     }
 

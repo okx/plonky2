@@ -1,7 +1,8 @@
 //! Concrete instantiation of a hash function.
-
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt::Debug;
+use std::iter::repeat;
 
 use crate::field::extension::Extendable;
 use crate::field::types::Field;
@@ -9,7 +10,6 @@ use crate::hash::hash_types::{HashOut, HashOutTarget, RichField, NUM_HASH_OUT_EL
 use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::AlgebraicHasher;
-use std::iter::repeat;
 
 pub(crate) const SPONGE_RATE: usize = 8;
 pub(crate) const SPONGE_CAPACITY: usize = 4;
