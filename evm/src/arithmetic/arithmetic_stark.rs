@@ -1,5 +1,5 @@
-use std::marker::PhantomData;
-use std::ops::Range;
+use core::marker::PhantomData;
+use core::ops::Range;
 
 use plonky2::field::extension::{Extendable, FieldExtension};
 use plonky2::field::packed::PackedField;
@@ -11,15 +11,15 @@ use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::util::transpose;
 use static_assertions::const_assert;
 
-use super::columns::NUM_ARITH_COLUMNS;
+use super::columns::{op_flags, NUM_ARITH_COLUMNS};
 use super::shift;
 use crate::all_stark::Table;
-use crate::arithmetic::columns::{RANGE_COUNTER, RC_FREQUENCIES, SHARED_COLS};
+use crate::arithmetic::columns::{NUM_SHARED_COLS, RANGE_COUNTER, RC_FREQUENCIES, SHARED_COLS};
 use crate::arithmetic::{addcy, byte, columns, divmod, modular, mul, Operation};
 use crate::constraint_consumer::{ConstraintConsumer, RecursiveConstraintConsumer};
-use crate::cross_table_lookup::{Column, TableWithColumns};
+use crate::cross_table_lookup::TableWithColumns;
 use crate::evaluation_frame::{StarkEvaluationFrame, StarkFrame};
-use crate::lookup::Lookup;
+use crate::lookup::{Column, Filter, Lookup};
 use crate::stark::Stark;
 
 /// Creates a vector of `Columns` to link the 16-bit columns of the arithmetic table,
@@ -63,6 +63,12 @@ pub(crate) fn ctl_arithmetic_rows<F: Field>() -> TableWithColumns<F> {
     // If an arithmetic operation is happening on the CPU side,
     // the CTL will enforce that the reconstructed opcode value
     // from the opcode bits matches.
+    // These opcodes are missing the syscall and prover_input opcodes,
+    // since `IS_RANGE_CHECK` can be associated to multiple opcodes.
+    // For `IS_RANGE_CHECK`, the opcodes are written in OPCODE_COL,
+    // and we use that column for scaling and the CTL checks.
+    // Note that we ensure in the STARK's constraints that the
+    // value in `OPCODE_COL` is 0 if `IS_RANGE_CHECK` = 0.
     const COMBINED_OPS: [(usize, u8); 16] = [
         (columns::IS_ADD, 0x01),
         (columns::IS_MUL, 0x02),
@@ -89,31 +95,38 @@ pub(crate) fn ctl_arithmetic_rows<F: Field>() -> TableWithColumns<F> {
         columns::OUTPUT_REGISTER,
     ];
 
-    let filter_column = Some(Column::sum(COMBINED_OPS.iter().map(|(c, _v)| *c)));
+    let mut filter_cols = COMBINED_OPS.to_vec();
+    filter_cols.push((columns::IS_RANGE_CHECK, 0x01));
 
+    let filter = Some(Filter::new_simple(Column::sum(
+        filter_cols.iter().map(|(c, _v)| *c),
+    )));
+
+    let mut all_combined_cols = COMBINED_OPS.to_vec();
+    all_combined_cols.push((columns::OPCODE_COL, 0x01));
     // Create the Arithmetic Table whose columns are those of the
     // operations listed in `ops` whose inputs and outputs are given
     // by `regs`, where each element of `regs` is a range of columns
     // corresponding to a 256-bit input or output register (also `ops`
     // is used as the operation filter).
     TableWithColumns::new(
-        Table::Arithmetic,
-        cpu_arith_data_link(&COMBINED_OPS, &REGISTER_MAP),
-        filter_column,
+        *Table::Arithmetic,
+        cpu_arith_data_link(&all_combined_cols, &REGISTER_MAP),
+        filter,
     )
 }
 
 /// Structure representing the `Arithmetic` STARK, which carries out all the arithmetic operations.
 #[derive(Copy, Clone, Default)]
-pub struct ArithmeticStark<F, const D: usize> {
+pub(crate) struct ArithmeticStark<F, const D: usize> {
     pub f: PhantomData<F>,
 }
 
-const RANGE_MAX: usize = 1usize << 16; // Range check strict upper bound
+pub(crate) const RANGE_MAX: usize = 1usize << 16; // Range check strict upper bound
 
 impl<F: RichField, const D: usize> ArithmeticStark<F, D> {
     /// Expects input in *column*-major layout
-    fn generate_range_checks(&self, cols: &mut Vec<Vec<F>>) {
+    fn generate_range_checks(&self, cols: &mut [Vec<F>]) {
         debug_assert!(cols.len() == columns::NUM_ARITH_COLUMNS);
 
         let n_rows = cols[0].len();
@@ -195,6 +208,16 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
         let lv: &[P; NUM_ARITH_COLUMNS] = vars.get_local_values().try_into().unwrap();
         let nv: &[P; NUM_ARITH_COLUMNS] = vars.get_next_values().try_into().unwrap();
 
+        // Flags must be boolean.
+        for flag_idx in op_flags() {
+            let flag = lv[flag_idx];
+            yield_constr.constraint(flag * (flag - P::ONES));
+        }
+
+        // Check that `OPCODE_COL` holds 0 if the operation is not a range_check.
+        let opcode_constraint = (P::ONES - lv[columns::IS_RANGE_CHECK]) * lv[columns::OPCODE_COL];
+        yield_constr.constraint(opcode_constraint);
+
         // Check the range column: First value must be 0, last row
         // must be 2^16-1, and intermediate rows must increment by 0
         // or 1.
@@ -231,6 +254,23 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
         let nv: &[ExtensionTarget<D>; NUM_ARITH_COLUMNS] =
             vars.get_next_values().try_into().unwrap();
 
+        // Flags must be boolean.
+        for flag_idx in op_flags() {
+            let flag = lv[flag_idx];
+            let constraint = builder.mul_sub_extension(flag, flag, flag);
+            yield_constr.constraint(builder, constraint);
+        }
+
+        // Check that `OPCODE_COL` holds 0 if the operation is not a range_check.
+        let opcode_constraint = builder.arithmetic_extension(
+            F::NEG_ONE,
+            F::ONE,
+            lv[columns::IS_RANGE_CHECK],
+            lv[columns::OPCODE_COL],
+            lv[columns::OPCODE_COL],
+        );
+        yield_constr.constraint(builder, opcode_constraint);
+
         // Check the range column: First value must be 0, last row
         // must be 2^16-1, and intermediate rows must increment by 0
         // or 1.
@@ -263,11 +303,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Stark<F, D> for ArithmeticSta
         3
     }
 
-    fn lookups(&self) -> Vec<Lookup> {
+    fn lookups(&self) -> Vec<Lookup<F>> {
         vec![Lookup {
-            columns: SHARED_COLS.collect(),
-            table_column: RANGE_COUNTER,
-            frequencies_column: RC_FREQUENCIES,
+            columns: Column::singles(SHARED_COLS).collect(),
+            table_column: Column::single(RANGE_COUNTER),
+            frequencies_column: Column::single(RC_FREQUENCIES),
+            filter_columns: vec![None; NUM_SHARED_COLS],
         }]
     }
 }

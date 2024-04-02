@@ -36,3 +36,7 @@ default = ["no_cuda"]
 cuda = ["cryptography_cuda"]
 precompile = []
 no_cuda = ["cryptography_cuda/no_cuda"]
+
+# Display math equations properly in documentation
+[package.metadata.docs.rs]
+rustdoc-args = ["--html-in-header", ".cargo/katex-header.html"]
