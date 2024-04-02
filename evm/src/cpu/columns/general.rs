@@ -1,6 +1,6 @@
-use std::borrow::{Borrow, BorrowMut};
-use std::fmt::{Debug, Formatter};
-use std::mem::{size_of, transmute};
+use core::borrow::{Borrow, BorrowMut};
+use core::fmt::{Debug, Formatter};
+use core::mem::{size_of, transmute};
 
 /// General purpose columns, which can have different meanings depending on what CTL or other
 /// operation is occurring at this row.
@@ -76,6 +76,7 @@ impl<T: Copy> CpuGeneralColumnsView<T> {
 }
 
 impl<T: Copy + PartialEq> PartialEq<Self> for CpuGeneralColumnsView<T> {
+    #[allow(clippy::unconditional_recursion)] // false positive
     fn eq(&self, other: &Self) -> bool {
         let self_arr: &[T; NUM_SHARED_COLUMNS] = self.borrow();
         let other_arr: &[T; NUM_SHARED_COLUMNS] = other.borrow();
@@ -135,20 +136,22 @@ pub(crate) struct CpuShiftView<T: Copy> {
     pub(crate) high_limb_sum_inv: T,
 }
 
-/// View of the last three `CpuGeneralColumns` storing the stack length pseudoinverse `stack_inv`,
-/// stack_len * stack_inv and filter * stack_inv_aux when needed.
+/// View of the last four `CpuGeneralColumns` storing stack-related variables. The first three are used
+/// for conditionally enabling and disabling channels when reading the next `stack_top`, and the fourth one
+/// is used to check for stack overflow.
 #[derive(Copy, Clone)]
 pub(crate) struct CpuStackView<T: Copy> {
-    // Used for conditionally enabling and disabling channels when reading the next `stack_top`.
-    _unused: [T; 5],
-    /// Pseudoinverse of the stack len.
+    _unused: [T; 4],
+    /// Pseudoinverse of `stack_len - num_pops`.
     pub(crate) stack_inv: T,
     /// stack_inv * stack_len.
     pub(crate) stack_inv_aux: T,
-    /// Holds filter * stack_inv_aux when necessary, to reduce the degree of stack constraints.
+    /// Used to reduce the degree of stack constraints when needed.
     pub(crate) stack_inv_aux_2: T,
+    /// Pseudoinverse of `nv.stack_len - (MAX_USER_STACK_SIZE + 1)` to check for stack overflow.
+    pub(crate) stack_len_bounds_aux: T,
 }
 
 /// Number of columns shared by all the views of `CpuGeneralColumnsView`.
 /// `u8` is guaranteed to have a `size_of` of 1.
-pub const NUM_SHARED_COLUMNS: usize = size_of::<CpuGeneralColumnsView<u8>>();
+pub(crate) const NUM_SHARED_COLUMNS: usize = size_of::<CpuGeneralColumnsView<u8>>();
