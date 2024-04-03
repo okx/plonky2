@@ -4193,6 +4193,12 @@ impl ElementBN128 {
     }
 
     #[inline]
+    fn mul64trunc(self, a: u64, b: u64) -> u64 {
+        let c128: u128 = (a as u128) * (b as u128);
+        c128 as u64
+    }
+
+    #[inline]
     fn add64(self, a: u64, b: u64, cin: u64) -> (u64, u64) {
         debug_assert!(cin == 0 || cin == 1);
 
@@ -4286,7 +4292,7 @@ impl ElementBN128 {
         // round 0
         let v = x[0];
         (c[1], c[0]) = self.mul64(v, y[0]);
-        let m = (c[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(c[0], 14042775128853446655u64);
         c[2] = self.madd0(m, 4891460686036598785u64, c[0]);
         (c[1], c[0]) = self.madd1(v, y[1], c[1]);
         (c[2], t[0]) = self.madd2(m, 2896914383306846353u64, c[2], c[0]);
@@ -4298,7 +4304,7 @@ impl ElementBN128 {
         // round 1
         let v = x[1];
         (c[1], c[0]) = self.madd1(v, y[0], t[0]);
-        let m = (c[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(c[0], 14042775128853446655u64);
         c[2] = self.madd0(m, 4891460686036598785u64, c[0]);
         (c[1], c[0]) = self.madd2(v, y[1], c[1], t[1]);
         (c[2], t[0]) = self.madd2(m, 2896914383306846353u64, c[2], c[0]);
@@ -4310,7 +4316,7 @@ impl ElementBN128 {
         // round 2
         let v = x[2];
         (c[1], c[0]) = self.madd1(v, y[0], t[0]);
-        let m = (c[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(c[0], 14042775128853446655u64);
         c[2] = self.madd0(m, 4891460686036598785u64, c[0]);
         (c[1], c[0]) = self.madd2(v, y[1], c[1], t[1]);
         (c[2], t[0]) = self.madd2(m, 2896914383306846353u64, c[2], c[0]);
@@ -4322,7 +4328,7 @@ impl ElementBN128 {
         // round 3
         let v = x[3];
         (c[1], c[0]) = self.madd1(v, y[0], t[0]);
-        let m = (c[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(c[0], 14042775128853446655u64);
         c[2] = self.madd0(m, 4891460686036598785u64, c[0]);
         (c[1], c[0]) = self.madd2(v, y[1], c[1], t[1]);
         (c[2], z[0]) = self.madd2(m, 2896914383306846353u64, c[2], c[0]);
@@ -4386,7 +4392,7 @@ impl ElementBN128 {
         let mut z: [u64; 4] = x;
 
         // m = z[0]n'[0] mod W
-        let m = (z[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(z[0], 14042775128853446655u64);
         let mut c = self.madd0(m, 4891460686036598785u64, z[0]);
         (c, z[0]) = self.madd2(m, 2896914383306846353u64, z[1], c);
         (c, z[1]) = self.madd2(m, 13281191951274694749u64, z[2], c);
@@ -4394,7 +4400,7 @@ impl ElementBN128 {
         z[3] = c;
 
         // m = z[0]n'[0] mod W
-        let m = (z[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(z[0], 14042775128853446655u64);
         let mut c = self.madd0(m, 4891460686036598785u64, z[0]);
         (c, z[0]) = self.madd2(m, 2896914383306846353u64, z[1], c);
         (c, z[1]) = self.madd2(m, 13281191951274694749u64, z[2], c);
@@ -4402,7 +4408,7 @@ impl ElementBN128 {
         z[3] = c;
 
         // m = z[0]n'[0] mod W
-        let m = (z[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(z[0], 14042775128853446655u64);
         let mut c = self.madd0(m, 4891460686036598785u64, z[0]);
         (c, z[0]) = self.madd2(m, 2896914383306846353u64, z[1], c);
         (c, z[1]) = self.madd2(m, 13281191951274694749u64, z[2], c);
@@ -4410,7 +4416,7 @@ impl ElementBN128 {
         z[3] = c;
 
         // m = z[0]n'[0] mod W
-        let m = (z[0] as u128 * 14042775128853446655u128) as u64;
+        let m = self.mul64trunc(z[0], 14042775128853446655u64);
         let mut c = self.madd0(m, 4891460686036598785u64, z[0]);
         (c, z[0]) = self.madd2(m, 2896914383306846353u64, z[1], c);
         (c, z[1]) = self.madd2(m, 13281191951274694749u64, z[2], c);

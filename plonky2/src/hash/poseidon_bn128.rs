@@ -15,6 +15,8 @@ use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
+#[cfg(target_feature = "avx2")]
+use crate::hash::arch::x86_64::poseidon_bn128_avx2::permute_bn128_avx;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct PoseidonBN128Permutation<F> {
@@ -163,6 +165,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
 
         let p: PoseidonBN128NativePermutation<F> = Default::default();
         let out = p.permute_fn(su64);
+        // let out = permute_bn128_avx(su64);
 
         let permute_output = [
                 F::from_canonical_u64(out[0]),
