@@ -1,6 +1,10 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 
 use crate::field::extension::Extendable;
@@ -32,7 +36,7 @@ pub struct ExponentiationGate<F: RichField + Extendable<D>, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> ExponentiationGate<F, D> {
-    pub fn new(num_power_bits: usize) -> Self {
+    pub const fn new(num_power_bits: usize) -> Self {
         Self {
             num_power_bits,
             _phantom: PhantomData,
@@ -51,21 +55,21 @@ impl<F: RichField + Extendable<D>, const D: usize> ExponentiationGate<F, D> {
         max_for_routed_wires.min(max_for_wires)
     }
 
-    pub fn wire_base(&self) -> usize {
+    pub(crate) const fn wire_base(&self) -> usize {
         0
     }
 
     /// The `i`th bit of the exponent, in little-endian order.
-    pub fn wire_power_bit(&self, i: usize) -> usize {
+    pub(crate) const fn wire_power_bit(&self, i: usize) -> usize {
         debug_assert!(i < self.num_power_bits);
         1 + i
     }
 
-    pub fn wire_output(&self) -> usize {
+    pub const fn wire_output(&self) -> usize {
         1 + self.num_power_bits
     }
 
-    pub fn wire_intermediate_value(&self, i: usize) -> usize {
+    pub(crate) const fn wire_intermediate_value(&self, i: usize) -> usize {
         debug_assert!(i < self.num_power_bits);
         2 + self.num_power_bits + i
     }

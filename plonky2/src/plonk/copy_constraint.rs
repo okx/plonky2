@@ -1,8 +1,10 @@
+#[cfg(not(feature = "std"))]
 use alloc::string::String;
 
 use crate::iop::target::Target;
 
 /// A named copy constraint.
+#[derive(Debug)]
 pub struct CopyConstraint {
     pub pair: (Target, Target),
     pub name: String,
@@ -18,7 +20,7 @@ impl From<(Target, Target)> for CopyConstraint {
 }
 
 impl CopyConstraint {
-    pub fn new(pair: (Target, Target), name: String) -> Self {
+    pub const fn new(pair: (Target, Target), name: String) -> Self {
         Self { pair, name }
     }
 }

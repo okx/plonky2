@@ -1,6 +1,10 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 
 use itertools::Itertools;
@@ -41,7 +45,7 @@ pub struct RandomAccessGate<F: RichField + Extendable<D>, const D: usize> {
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> RandomAccessGate<F, D> {
-    fn new(num_copies: usize, bits: usize, num_extra_constants: usize) -> Self {
+    const fn new(num_copies: usize, bits: usize, num_extra_constants: usize) -> Self {
         Self {
             bits,
             num_copies,
@@ -71,46 +75,46 @@ impl<F: RichField + Extendable<D>, const D: usize> RandomAccessGate<F, D> {
     }
 
     /// Length of the list being accessed.
-    fn vec_size(&self) -> usize {
+    const fn vec_size(&self) -> usize {
         1 << self.bits
     }
 
     /// For each copy, a wire containing the claimed index of the element.
-    pub fn wire_access_index(&self, copy: usize) -> usize {
+    pub(crate) const fn wire_access_index(&self, copy: usize) -> usize {
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy
     }
 
     /// For each copy, a wire containing the element claimed to be at the index.
-    pub fn wire_claimed_element(&self, copy: usize) -> usize {
+    pub(crate) const fn wire_claimed_element(&self, copy: usize) -> usize {
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy + 1
     }
 
     /// For each copy, wires containing the entire list.
-    pub fn wire_list_item(&self, i: usize, copy: usize) -> usize {
+    pub(crate) const fn wire_list_item(&self, i: usize, copy: usize) -> usize {
         debug_assert!(i < self.vec_size());
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy + 2 + i
     }
 
-    fn start_extra_constants(&self) -> usize {
+    const fn start_extra_constants(&self) -> usize {
         (2 + self.vec_size()) * self.num_copies
     }
 
-    fn wire_extra_constant(&self, i: usize) -> usize {
+    const fn wire_extra_constant(&self, i: usize) -> usize {
         debug_assert!(i < self.num_extra_constants);
         self.start_extra_constants() + i
     }
 
     /// All above wires are routed.
-    pub fn num_routed_wires(&self) -> usize {
+    pub const fn num_routed_wires(&self) -> usize {
         self.start_extra_constants() + self.num_extra_constants
     }
 
     /// An intermediate wire where the prover gives the (purported) binary decomposition of the
     /// index.
-    pub fn wire_bit(&self, i: usize, copy: usize) -> usize {
+    pub(crate) const fn wire_bit(&self, i: usize, copy: usize) -> usize {
         debug_assert!(i < self.bits);
         debug_assert!(copy < self.num_copies);
         self.num_routed_wires() + copy * self.bits + i

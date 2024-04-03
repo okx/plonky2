@@ -1,5 +1,6 @@
 #[cfg(feature = "cuda")]
 use alloc::sync::Arc;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
@@ -685,7 +686,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaf_size: usize,
     cap_height: usize,
 ) {
-    // if the input is small or if it Keccak hashing, just do the hashing on CPU    
+    // if the input is small or if it Keccak hashing, just do the hashing on CPU
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
