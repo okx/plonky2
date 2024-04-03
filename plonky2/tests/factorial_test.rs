@@ -46,5 +46,5 @@ fn test_factorial_proof(){
         proof.public_inputs[0], proof.public_inputs[1]
     );
 
-    data.verify(proof);
+    let _= data.verify(proof);
 }
