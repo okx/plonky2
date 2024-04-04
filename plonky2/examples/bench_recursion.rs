@@ -11,8 +11,6 @@ use alloc::sync::Arc;
 use core::num::ParseIntError;
 use core::ops::RangeInclusive;
 use core::str::FromStr;
-#[cfg(feature = "std")]
-use std::sync::Arc;
 
 use anyhow::{anyhow, Context as _, Result};
 use log::{info, Level, LevelFilter};
