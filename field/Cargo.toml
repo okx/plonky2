@@ -36,7 +36,7 @@ proc-macro2 = "1"
 quote = "1"
 
 [features]
-default = ["cryptography_cuda/no_cuda"]
+default = []
 cuda = ["cryptography_cuda/cuda"]
 precompile = []
 no_cuda = ["cryptography_cuda/no_cuda"]
