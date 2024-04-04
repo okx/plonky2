@@ -36,7 +36,7 @@ use crate::plonk::config::HasherType;
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
-static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+static GPU_LOCK: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 #[cfg(feature = "cuda_timing")]
 fn print_time(now: Instant, msg: &str) {
@@ -279,7 +279,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
 
-    let _lock = gpu_lock.lock().unwrap();
+    let _lock = GPU_LOCK.lock().unwrap();
 
     unsafe {
         let now = Instant::now();
@@ -431,7 +431,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         cap_buf.len() * NUM_HASH_OUT_ELTS
     };
 
-    let _lock = gpu_lock.lock().unwrap();
+    let _lock = GPU_LOCK.lock().unwrap();
 
     // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
@@ -563,7 +563,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaf_len.try_into().unwrap();
 
-    let _lock = gpu_lock.lock().unwrap();
+    let _lock = GPU_LOCK.lock().unwrap();
 
     let now = Instant::now();
     // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
@@ -593,7 +593,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
         {
-            // println!("Multi GPU");
+            println!("Multi GPU");
             fill_digests_buf_linear_multigpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
@@ -606,7 +606,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
                 H::HASHER_TYPE as u64,
             );
         } else {
-            // println!("Single GPU");
+            println!("Single GPU");
             fill_digests_buf_linear_gpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
@@ -849,11 +849,11 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         v
     }
 
-    pub fn get_leaves_1D(&self) -> Vec<F> {
+    pub fn get_leaves_1d(&self) -> Vec<F> {
         self.leaves.clone()
     }
 
-    pub fn get_leaves_2D(&self) -> Vec<Vec<F>> {
+    pub fn get_leaves_2d(&self) -> Vec<Vec<F>> {
         let v2d: Vec<Vec<F>> = self
             .leaves
             .chunks_exact(self.leaf_size)

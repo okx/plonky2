@@ -12,12 +12,12 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = ["gate_testing", "parallel", "rand_chacha", "std", "timing", "cryptography_cuda/no_cuda"]
+default = ["gate_testing", "parallel", "rand_chacha", "std", "timing"]
 gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]
 timing = ["std", "dep:web-time"]
-cuda =["cryptography_cuda/cuda"]
+cuda = ["cryptography_cuda/cuda"]
 no_cuda = ["cryptography_cuda/no_cuda"]
 batch = []
 cuda_timing = []
@@ -36,6 +36,7 @@ serde = { workspace = true, features = ["rc"] }
 static_assertions = { workspace = true }
 unroll = { workspace = true }
 web-time = { version = "1.0.0", optional = true }
+once_cell = { version = "1.18.0" }
 
 # Local dependencies
 plonky2_field = { version = "0.2.0", path = "../field", default-features = false }
