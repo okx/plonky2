@@ -18,12 +18,12 @@ pub fn shift_avx512(a: &__m512i) -> __m512i {
 
 #[allow(dead_code)]
 #[inline(always)]
-pub fn toCanonical_avx512(a_s: &__m512i) -> __m512i {
+pub fn toCanonical_avx512(a: &__m512i) -> __m512i {
     unsafe {
         let P8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
         let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
-        let result_mask = _mm512_cmpge_epu64_mask(a, P8);
-        _mm512_mask_add_epi64(a, result_mask, a, P8_n)
+        let result_mask = _mm512_cmpge_epu64_mask(*a, P8);
+        _mm512_mask_add_epi64(*a, result_mask, *a, P8_n)
     }
 }
 
@@ -31,9 +31,9 @@ pub fn toCanonical_avx512(a_s: &__m512i) -> __m512i {
 pub fn add_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
         let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
-        let c0 = _mm512_add_epi64(a, b);
-        let result_mask = _mm512_cmpgt_epu64_mask(a, c0);
-        _mm512_mask_add_epi64(c0, result_mask, c0, P8_n);
+        let c0 = _mm512_add_epi64(*a, *b);
+        let result_mask = _mm512_cmpgt_epu64_mask(*a, c0);
+        _mm512_mask_add_epi64(c0, result_mask, c0, P8_n)
     }
 }
 
@@ -41,9 +41,9 @@ pub fn add_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
 pub fn sub_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
         let P8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
-        let c0 = _mm512_sub_epi64(a, b);
-        let result_mask = _mm512_cmpgt_epu64_mask(b, a);
-        _mm512_mask_add_epi64(c0, result_mask, c0, P8);
+        let c0 = _mm512_sub_epi64(*a, *b);
+        let result_mask = _mm512_cmpgt_epu64_mask(*b, *a);
+        _mm512_mask_add_epi64(c0, result_mask, c0, P8)
     }
 }
 
@@ -51,10 +51,10 @@ pub fn sub_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
 pub fn reduce_avx512_128_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
     unsafe {
         let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
-        let c_hh = _mm512_srli_epi64(c_h, 32);
-        let c1 = sub_avx512_b_c(*c_l, c_hh);
-        let c2 = _mm512_mul_epu32(c_h, P8_n);
-        add_avx512_b_c(c1, c2)
+        let c_hh = _mm512_srli_epi64(*c_h, 32);
+        let c1 = sub_avx512_b_c(c_l, &c_hh);
+        let c2 = _mm512_mul_epu32(*c_h, P8_n);
+        add_avx512_b_c(&c1, &c2)
     }
 }
 
@@ -118,8 +118,8 @@ where
     F: RichField,
 {
     unsafe {
-        let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<__m512i>());
-        let s1 = _mm512_loadu_si512((&state[8..16]).as_ptr().cast::<__m512i>());
+        let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
+        let s1 = _mm512_loadu_si512((&state[8..16]).as_ptr().cast::<i32>());
         // x^2
         let p10 = sqr_avx512(&s0);
         let p11 = sqr_avx512(&s1);
@@ -132,8 +132,8 @@ where
         // x^7
         let p10 = mult_avx512(&s0, &p20);
         let p11 = mult_avx512(&s1, &p21);
-        _mm512_storeu_si512((&mut state[0..8]).as_mut_ptr().cast::<__m512i>(), p10);
-        _mm512_storeu_si512((&mut state[8..16]).as_mut_ptr().cast::<__m512i>(), p11);
+        _mm512_storeu_si512((&mut state[0..8]).as_mut_ptr().cast::<i32>(), p10);
+        _mm512_storeu_si512((&mut state[8..16]).as_mut_ptr().cast::<i32>(), p11);
     }
 }
 
