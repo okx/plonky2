@@ -275,3 +275,14 @@ pub fn sbox_avx_m256i(s0: &__m256i, s1: &__m256i, s2: &__m256i) -> (__m256i, __m
 
     (r0, r1, r2)
 }
+#[inline(always)]
+pub fn sbox_avx_one(s0: &__m256i) -> __m256i {
+    // x^2
+    let p10 = sqr_avx(s0);
+    // x^3
+    let p30 = mult_avx(&p10, s0);
+    // x^4 = (x^2)^2
+    let p40 = sqr_avx(&p10);
+    // x^7
+    mult_avx(&p40, &p30)
+}
