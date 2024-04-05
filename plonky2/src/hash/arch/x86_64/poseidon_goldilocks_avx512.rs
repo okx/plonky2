@@ -251,7 +251,7 @@ where
             r1 = add_avx512_b_c(&r1, &m1);
         }
         _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-        _mm512_storeu_si512((state[8..12]).as_mut_ptr().cast::<i32>(), r1);
+        _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
         state[0] = res0;
     }
 }
@@ -322,22 +322,19 @@ where
             _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
             _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
 
-            *state = <F as Poseidon>::mds_layer(&state);
-            // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
+            *state = <F as Poseidon>::mds_layer(&state);            
             round_ctr += 1;
-        }
-
-        // Self::partial_rounds(&mut state, &mut round_ctr);
-        partial_first_constant_layer_avx(&mut state);
+        }        
+        partial_first_constant_layer_avx(&mut state);        
         mds_partial_layer_init_avx(&mut state);
-
+        
         for i in 0..N_PARTIAL_ROUNDS {
             state[0] = sbox_monomial(state[0]);
             state[0] = state[0].add_canonical_u64(FAST_PARTIAL_ROUND_CONSTANTS[i]);
             *state = <F as Poseidon>::mds_partial_layer_fast(&state, i);
         }
         round_ctr += N_PARTIAL_ROUNDS;
-
+        
         // Self::full_rounds(&mut state, &mut round_ctr);
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state
@@ -348,7 +345,7 @@ where
                 .try_into()
                 .unwrap();
             let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm512_loadu_si512((&rc[8..12]).as_ptr().cast::<i32>());
+            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
             let ss0 = add_avx512_b_c(&s0, &rc0);
             let ss1 = add_avx512_b_c(&s1, &rc1);
             let r0 = sbox_avx512_one(&ss0);

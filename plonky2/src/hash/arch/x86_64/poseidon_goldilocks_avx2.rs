@@ -215,6 +215,8 @@ const FAST_PARTIAL_ROUND_INITIAL_MATRIX: [[u64; 12]; 12] = [
 ];
 
 #[allow(dead_code)]
+#[inline(always)]
+#[unroll_for_loops]
 fn mds_row_shf(r: usize, v: &[u64; SPONGE_WIDTH]) -> (u64, u64) {
     let mut res = 0u128;
 
@@ -227,6 +229,53 @@ fn mds_row_shf(r: usize, v: &[u64; SPONGE_WIDTH]) -> (u64, u64) {
     res += (v[r] as u128) * (MDS_MATRIX_DIAG[r] as u128);
 
     ((res >> 64) as u64, res as u64)
+}
+
+#[allow(dead_code)]
+#[inline(always)]
+#[unroll_for_loops]
+unsafe fn mds_layer_avx_v3<F>(state: &mut [F; SPONGE_WIDTH])
+where
+    F: PrimeField64 + Poseidon,
+{
+    let mut v: [u64; 24] = [0; 24];
+    for i in 0..12 {
+        v[i] = state[i].to_canonical_u64();
+        v[i+12] = v[i];
+    }    
+
+    let mut r0l = _mm256_set_epi64x(((v[0] & 0xFFFFFFFF) * MDS_MATRIX_DIAG[0]) as i64, 0, 0, 0);
+    let mut r1l = _mm256_set_epi64x(0, 0, 0, 0);;
+    let mut r2l = r1l;
+    let mut r0h = _mm256_set_epi64x(((v[0] >> 32) * MDS_MATRIX_DIAG[0]) as i64, 0, 0, 0);
+    let mut r1h = r1l;
+    let mut r2h = r2l;
+    
+    for i in 0..12 {
+        let vv0 = _mm256_loadu_si256((&v[i+0..i+4]).as_ptr().cast::<__m256i>());
+        let vv1 = _mm256_loadu_si256((&v[i+4..i+8]).as_ptr().cast::<__m256i>());
+        let vv2 = _mm256_loadu_si256((&v[i+8..i+12]).as_ptr().cast::<__m256i>());
+        let m = _mm256_set_epi64x(MDS_MATRIX_CIRC[i] as i64, MDS_MATRIX_CIRC[i] as i64, MDS_MATRIX_CIRC[i] as i64, MDS_MATRIX_CIRC[i] as i64);
+        let c0l = _mm256_mul_epu32(vv0, m);
+        let c1l = _mm256_mul_epu32(vv1, m);
+        let c2l = _mm256_mul_epu32(vv2, m);
+        let c0h = _mm256_mul_epu32(_mm256_srli_epi64(vv0, 32), m);
+        let c1h = _mm256_mul_epu32(_mm256_srli_epi64(vv1, 32), m);
+        let c2h = _mm256_mul_epu32(_mm256_srli_epi64(vv2, 32), m);
+        r0l = _mm256_add_epi64(r0l, c0l);
+        r1l = _mm256_add_epi64(r1l, c1l);
+        r2l = _mm256_add_epi64(r2l, c2l);
+        r0h = _mm256_add_epi64(r0h, c0h);
+        r1h = _mm256_add_epi64(r1h, c1h);
+        r2h = _mm256_add_epi64(r2h, c2h);        
+    }
+    let r0 = reduce_avx_128_64(&r0h, &r0l);
+    let r1 = reduce_avx_128_64(&r1h, &r1l);
+    let r2 = reduce_avx_128_64(&r2h, &r2l);
+    
+    _mm256_storeu_si256((&mut state[0..4]).as_mut_ptr().cast::<__m256i>(), r0);
+    _mm256_storeu_si256((&mut state[4..8]).as_mut_ptr().cast::<__m256i>(), r1);
+    _mm256_storeu_si256((&mut state[8..12]).as_mut_ptr().cast::<__m256i>(), r2);
 }
 
 #[allow(dead_code)]
@@ -421,6 +470,7 @@ where
             _mm256_storeu_si256((state[4..8]).as_mut_ptr().cast::<__m256i>(), r1);
             _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), r2);
 
+            // mds_layer_avx_v3(&mut state);
             *state = <F as Poseidon>::mds_layer(&state);
             // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
             round_ctr += 1;
@@ -462,6 +512,7 @@ where
             _mm256_storeu_si256((state[4..8]).as_mut_ptr().cast::<__m256i>(), r1);
             _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), r2);
 
+            // mds_layer_avx_v3(&mut state);
             *state = <F as Poseidon>::mds_layer(&state);
             // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
             round_ctr += 1;
