@@ -622,7 +622,7 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
-    #[cfg(all(target_feature = "avx2", target_feature = "avx2"))]
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         poseidon_avx512(&input)
     }

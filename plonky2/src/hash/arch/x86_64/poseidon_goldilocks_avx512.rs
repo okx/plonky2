@@ -3,7 +3,6 @@ use core::arch::x86_64::*;
 use unroll::unroll_for_loops;
 
 use crate::field::types::PrimeField64;
-use crate::hash::arch::x86_64::goldilocks_avx2::*;
 use crate::hash::arch::x86_64::goldilocks_avx512::*;
 use crate::hash::poseidon::{
     Poseidon, ALL_ROUND_CONSTANTS, HALF_N_FULL_ROUNDS, N_PARTIAL_ROUNDS, N_ROUNDS, SPONGE_WIDTH,
@@ -213,85 +212,6 @@ const FAST_PARTIAL_ROUND_INITIAL_MATRIX: [[u64; 12]; 12] = [
     ],
 ];
 
-#[allow(dead_code)]
-fn mds_row_shf(r: usize, v: &[u64; SPONGE_WIDTH]) -> (u64, u64) {
-    let mut res = 0u128;
-
-    // This is a hacky way of fully unrolling the loop.
-    for i in 0..12 {
-        if i < SPONGE_WIDTH {
-            res += (v[(i + r) % SPONGE_WIDTH] as u128) * (MDS_MATRIX_CIRC[i] as u128);
-        }
-    }
-    res += (v[r] as u128) * (MDS_MATRIX_DIAG[r] as u128);
-
-    ((res >> 64) as u64, res as u64)
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-#[unroll_for_loops]
-unsafe fn mds_layer_avx(s0: &__m256i, s1: &__m256i, s2: &__m256i) -> (__m256i, __m256i, __m256i) {
-    let mut st64 = [0u64; SPONGE_WIDTH];
-
-    _mm256_storeu_si256((&mut st64[0..4]).as_mut_ptr().cast::<__m256i>(), *s0);
-    _mm256_storeu_si256((&mut st64[4..8]).as_mut_ptr().cast::<__m256i>(), *s1);
-    _mm256_storeu_si256((&mut st64[8..12]).as_mut_ptr().cast::<__m256i>(), *s2);
-
-    let mut sumh: [u64; 12] = [0; 12];
-    let mut suml: [u64; 12] = [0; 12];
-    for r in 0..12 {
-        if r < SPONGE_WIDTH {
-            (sumh[r], suml[r]) = mds_row_shf(r, &st64);
-        }
-    }
-
-    let ss0h = _mm256_loadu_si256((&sumh[0..4]).as_ptr().cast::<__m256i>());
-    let ss0l = _mm256_loadu_si256((&suml[0..4]).as_ptr().cast::<__m256i>());
-    let ss1h = _mm256_loadu_si256((&sumh[4..8]).as_ptr().cast::<__m256i>());
-    let ss1l = _mm256_loadu_si256((&suml[4..8]).as_ptr().cast::<__m256i>());
-    let ss2h = _mm256_loadu_si256((&sumh[8..12]).as_ptr().cast::<__m256i>());
-    let ss2l = _mm256_loadu_si256((&suml[8..12]).as_ptr().cast::<__m256i>());
-    let r0 = reduce_avx_128_64(&ss0h, &ss0l);
-    let r1 = reduce_avx_128_64(&ss1h, &ss1l);
-    let r2 = reduce_avx_128_64(&ss2h, &ss2l);
-
-    (r0, r1, r2)
-}
-
-#[allow(dead_code)]
-#[inline(always)]
-#[unroll_for_loops]
-unsafe fn mds_layer_avx_v2<F>(
-    s0: &__m256i,
-    s1: &__m256i,
-    s2: &__m256i,
-) -> (__m256i, __m256i, __m256i)
-where
-    F: PrimeField64,
-{
-    let mut st64 = [0u64; SPONGE_WIDTH];
-
-    _mm256_storeu_si256((&mut st64[0..4]).as_mut_ptr().cast::<__m256i>(), *s0);
-    _mm256_storeu_si256((&mut st64[4..8]).as_mut_ptr().cast::<__m256i>(), *s1);
-    _mm256_storeu_si256((&mut st64[8..12]).as_mut_ptr().cast::<__m256i>(), *s2);
-
-    let mut result = [F::ZERO; SPONGE_WIDTH];
-    // This is a hacky way of fully unrolling the loop.
-    for r in 0..12 {
-        if r < SPONGE_WIDTH {
-            let (sum_hi, sum_lo) = mds_row_shf(r, &st64);
-            result[r] = F::from_noncanonical_u96((sum_lo, sum_hi.try_into().unwrap()));
-        }
-    }
-
-    let r0 = _mm256_loadu_si256((&result[0..4]).as_ptr().cast::<__m256i>());
-    let r1 = _mm256_loadu_si256((&result[4..8]).as_ptr().cast::<__m256i>());
-    let r2 = _mm256_loadu_si256((&result[8..12]).as_ptr().cast::<__m256i>());
-
-    (r0, r1, r2)
-}
-
 #[inline(always)]
 #[unroll_for_loops]
 fn mds_partial_layer_init_avx<F>(state: &mut [F; SPONGE_WIDTH])
@@ -302,15 +222,9 @@ where
     let res0 = state[0];
     unsafe {
         let mut r0 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
-        let mut r1 = _mm256_loadu_si256((&mut result[8..12]).as_mut_ptr().cast::<__m256i>());
+        let mut r1 = _mm512_loadu_si512((&mut result[4..12]).as_mut_ptr().cast::<i32>());
         
-        for r in 1..12 {
-            let sr256 = _mm256_set_epi64x(
-                state[r].to_canonical_u64() as i64,
-                state[r].to_canonical_u64() as i64,
-                state[r].to_canonical_u64() as i64,
-                state[r].to_canonical_u64() as i64,
-            );
+        for r in 1..12 {           
             let sr512 = _mm512_set_epi64(
                 state[r].to_canonical_u64() as i64,
                 state[r].to_canonical_u64() as i64,
@@ -326,18 +240,18 @@ where
                     .as_ptr()
                     .cast::<i32>(),
             );
-            let t1 = _mm256_loadu_si256(
-                (&FAST_PARTIAL_ROUND_INITIAL_MATRIX[r][8..12])
+            let t1 = _mm512_loadu_si512(
+                (&FAST_PARTIAL_ROUND_INITIAL_MATRIX[r][4..12])
                     .as_ptr()
-                    .cast::<__m256i>(),
+                    .cast::<i32>(),
             );
             let m0 = mult_avx512(&sr512, &t0);
-            let m1 = mult_avx(&sr256, &t1);
+            let m1 = mult_avx512(&sr512, &t1);
             r0 = add_avx512_b_c(&r0, &m0);
-            r1 = add_avx(&r1, &m1);
+            r1 = add_avx512_b_c(&r1, &m1);
         }
         _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-        _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), r1);
+        _mm512_storeu_si512((state[8..12]).as_mut_ptr().cast::<i32>(), r1);
         state[0] = res0;
     }
 }
@@ -354,17 +268,17 @@ where
                 .as_ptr()
                 .cast::<i32>(),
         );
-        let c1 = _mm256_loadu_si256(
-            (&FAST_PARTIAL_FIRST_ROUND_CONSTANT[8..12])
+        let c1 = _mm512_loadu_si512(
+            (&FAST_PARTIAL_FIRST_ROUND_CONSTANT[4..12])
                 .as_ptr()
-                .cast::<__m256i>(),
+                .cast::<i32>(),
         );
         let mut s0 = _mm512_loadu_si512((state[0..8]).as_ptr().cast::<i32>());
-        let mut s1 = _mm256_loadu_si256((state[8..12]).as_ptr().cast::<__m256i>());
+        let mut s1 = _mm512_loadu_si512((state[4..12]).as_ptr().cast::<i32>());
         s0 = add_avx512_b_c(&s0, &c0);
-        s1 = add_avx(&s1, &c1);
+        s1 = add_avx512_b_c(&s1, &c1);
         _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), s0);
-        _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), s1);
+        _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), s1);
     }
 }
 
@@ -392,21 +306,21 @@ where
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state
             let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
-            let s1 = _mm256_loadu_si256((&state[8..12]).as_ptr().cast::<__m256i>());
+            let s1 = _mm512_loadu_si512((&state[4..12]).as_ptr().cast::<i32>());
 
             let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
             let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm256_loadu_si256((&rc[8..12]).as_ptr().cast::<__m256i>());
+            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
             let ss0 = add_avx512_b_c(&s0, &rc0);
-            let ss1 = add_avx(&s1, &rc1);
+            let ss1 = add_avx512_b_c(&s1, &rc1);
             let r0 = sbox_avx512_one(&ss0);
-            let r1 = sbox_avx_one(&ss1);
+            let r1 = sbox_avx512_one(&ss1);
 
             // store state
             _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-            _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), r1);
+            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
 
             *state = <F as Poseidon>::mds_layer(&state);
             // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
@@ -428,21 +342,21 @@ where
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state
             let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
-            let s1 = _mm256_loadu_si256((&state[8..12]).as_ptr().cast::<__m256i>());
+            let s1 = _mm512_loadu_si512((&state[4..12]).as_ptr().cast::<i32>());
 
             let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
             let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm256_loadu_si256((&rc[8..12]).as_ptr().cast::<__m256i>());
+            let rc1 = _mm512_loadu_si512((&rc[8..12]).as_ptr().cast::<i32>());
             let ss0 = add_avx512_b_c(&s0, &rc0);
-            let ss1 = add_avx(&s1, &rc1);
+            let ss1 = add_avx512_b_c(&s1, &rc1);
             let r0 = sbox_avx512_one(&ss0);
-            let r1 = sbox_avx_one(&ss1);
+            let r1 = sbox_avx512_one(&ss1);
 
             // store state
             _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-            _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), r1);
+            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
 
             *state = <F as Poseidon>::mds_layer(&state);
             // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
