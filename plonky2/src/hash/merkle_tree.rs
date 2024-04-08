@@ -46,6 +46,9 @@ fn print_time(now: Instant, msg: &str) {
 #[cfg(not(feature = "cuda_timing"))]
 fn print_time(_now: Instant, _msg: &str) {}
 
+#[cfg(feature = "cuda")]
+const FORCE_SINGLE_GPU: bool = true;
+
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
 /// It can be used in place of the root to verify Merkle paths, which are `h` elements shorter.
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
@@ -313,7 +316,8 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
             .parse()
             .unwrap();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
@@ -471,7 +475,8 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
@@ -588,12 +593,13 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
         {
-            println!("Multi GPU");
+            // println!("Multi GPU");
             fill_digests_buf_linear_multigpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
@@ -606,7 +612,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
                 H::HASHER_TYPE as u64,
             );
         } else {
-            println!("Single GPU");
+            // println!("Single GPU");
             fill_digests_buf_linear_gpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
