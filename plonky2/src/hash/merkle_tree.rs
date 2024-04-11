@@ -760,7 +760,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
     pub fn new_from_2d(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
         let leaf_size = leaves_2d[0].len();
-        let leaves_1d = leaves_2d.into_iter().flatten().collect();
+        let leaves_count = leaves_2d.len();
+        let zeros = vec![F::from_canonical_u64(0); leaf_size];
+        let mut leaves_1d: Vec<F> = Vec::with_capacity(leaves_count * leaf_size);
+        for idx in 0..leaves_count {
+            if leaves_2d[idx].len() == 0 {
+                leaves_1d.extend(zeros.clone());
+            } else {
+                leaves_1d.extend(leaves_2d[idx].clone());
+            }
+        }
         Self::new_from_1d(leaves_1d, leaf_size, cap_height)
     }
 
