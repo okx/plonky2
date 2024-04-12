@@ -12,7 +12,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = ["gate_testing", "parallel", "rand_chacha", "std", "timing", "cryptography_cuda/no_cuda"]
+default = ["gate_testing", "parallel", "rand_chacha", "std", "cryptography_cuda/no_cuda"]
 gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]
