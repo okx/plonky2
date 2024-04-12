@@ -23,7 +23,7 @@ rand = { workspace = true, features = ["getrandom"] }
 serde = { workspace = true, features = ["alloc"] }
 static_assertions = { workspace = true }
 unroll = { workspace = true }
-cryptography_cuda ={path="../depends/cryptography_cuda", optional=true}
+cryptography_cuda = { path = "../depends/cryptography_cuda", optional = true}
 
 [dev-dependencies]
 rand = { version = "0.8.5", default-features = false, features = ["getrandom"] }
@@ -40,8 +40,6 @@ default = []
 cuda = ["cryptography_cuda/cuda"]
 precompile = []
 no_cuda = ["cryptography_cuda/no_cuda"]
-
-
 
 # Display math equations properly in documentation
 [package.metadata.docs.rs]
