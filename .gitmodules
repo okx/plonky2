@@ -1,4 +1,4 @@
 [submodule "depends/cryptography_cuda"]
 	path = depends/cryptography_cuda
 	url = git@github.com:okx/cryptography_cuda.git
-	branch =5c5c3ca7987125507c8eb17572ecb355ffed2256
+	branch =5467455f1c54cee7579fe64c3b53846a9428d6dc

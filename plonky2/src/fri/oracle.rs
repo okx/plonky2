@@ -356,7 +356,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         // let num_gpus: usize = 1;
         #[cfg(all(feature = "cuda", feature = "batch"))]
         println!("get num of gpus: {:?}", num_gpus);
-        let total_num_of_fft = polynomials.len();
+        let _total_num_of_fft = polynomials.len();
         // println!("total_num_of_fft: {:?}", total_num_of_fft);
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let per_device_batch = total_num_of_fft.div_ceil(num_gpus);
