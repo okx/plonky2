@@ -885,6 +885,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         assert_eq!(leaf.len(), self.leaf_size);
         let leaves_count = self.leaves.len() / self.leaf_size;
         assert!(leaf_index < leaves_count);
+
         let cap_height = log2_strict(self.cap.len());
         let mut leaves = self.leaves.clone();
         let start = leaf_index * self.leaf_size;
@@ -897,6 +898,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let cap_len = self.cap.0.len();
         let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
         let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        self.leaves = leaves;
         if digests_buf.is_empty() {
             cap_buf[leaf_index].write(H::hash_or_noop(leaf_copy.as_slice()));
         } else {
@@ -906,7 +908,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             let subtree_offset = subtree_idx * subtree_digests_len;
             let idx_in_subtree =
                 subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
-
             if subtree_leaves_len == 2 {
                 digests_buf[subtree_offset + idx_in_subtree]
                     .write(H::hash_or_noop(leaf_copy.as_slice()));
@@ -915,20 +916,22 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
                 let idx = subtree_offset + idx_in_subtree;
                 digests_buf[idx].write(H::hash_or_noop(leaf_copy.as_slice()));
                 let mut child_idx: i64 = idx_in_subtree as i64;
-                let mut parent_idx: i64 = (child_idx - 1) / 2;
+                let mut parent_idx: i64 = child_idx / 2 - 1;
                 while child_idx > 1 {
                     unsafe {
-                        let mut left_digest = digests_buf[child_idx as usize].assume_init();
-                        let mut right_digest = digests_buf[child_idx as usize + 1].assume_init();
-                        if idx_in_subtree & 1 == 1 {
-                            left_digest = digests_buf[child_idx as usize - 1].assume_init();
-                            right_digest = digests_buf[child_idx as usize].assume_init();
+                        let mut left_idx = subtree_offset + child_idx as usize;
+                        let mut right_idx = subtree_offset + child_idx as usize + 1;
+                        if child_idx & 1 == 1 {
+                            left_idx = subtree_offset + child_idx as usize - 1;
+                            right_idx = subtree_offset + child_idx as usize;
                         }
-                        digests_buf[parent_idx as usize]
+                        let left_digest = digests_buf[left_idx].assume_init();
+                        let right_digest = digests_buf[right_idx].assume_init();
+                        digests_buf[subtree_offset + parent_idx as usize]
                             .write(H::two_to_one(left_digest, right_digest));
                     }
                     child_idx = parent_idx;
-                    parent_idx = (child_idx - 1) / 2;
+                    parent_idx = child_idx / 2 - 1;
                 }
             }
             unsafe {
@@ -1054,6 +1057,78 @@ mod tests {
             });
     }
 
+    fn verify_change_leaf_and_update_range(leaves_count: usize, leaf_size: usize, cap_height: usize, start_index: usize, end_index: usize) {
+        use plonky2_field::types::Field;
+
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+
+        let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
+        let leaves2_1d: Vec<F> = leaves1_1d.clone();
+
+        let mut tree2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(leaves2_1d, leaf_size, cap_height);
+
+        // v1
+        let now = Instant::now();
+        for i in start_index..end_index {
+            for j in 0..leaf_size {
+                leaves1_1d[i * leaf_size + j] = vals[i - start_index][j];
+            }
+        }
+        let tree1 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(leaves1_1d, leaf_size, cap_height);
+        println!("Time V1: {} ms", now.elapsed().as_millis());
+
+        // v2
+        let now = Instant::now();
+        for idx in start_index..end_index {
+            let mut leaf: Vec<F> = vec![F::from_canonical_u64(0); leaf_size];
+            for j in 0..leaf_size {
+                leaf[j] = vals[idx - start_index][j];
+            }
+            tree2.change_leaf_and_update(leaf, idx);
+        }
+        println!("Time V2: {} ms", now.elapsed().as_millis());
+
+        // compare leaves
+        let t2leaves = tree2.get_leaves_1d();
+        tree1.get_leaves_1d().chunks_exact(leaf_size).enumerate().for_each(
+            |(i, x)| {
+                let mut ok = true;
+                for j in 0..leaf_size {
+                    if x[j] != t2leaves[i * leaf_size + j] {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    println!("Leaves different at index {:?}", i);
+                }
+            }
+        );
+
+        // compare trees
+        tree1.digests.into_iter().enumerate().for_each(
+            |(i,x)| {
+                let y = tree2.digests[i];
+                if x != y {
+                    println!("Digests different at index {:?}", i);
+                }
+            }
+        );
+        tree1.cap.0.into_iter().enumerate().for_each(
+            |(i,x)| {
+                let y = tree2.cap.0[i];
+                    if x != y {
+                        println!("Cap different at index {:?}", i);
+                    }
+            }
+        );
+    }
+
     #[test]
     #[should_panic]
     fn test_cap_height_too_big() {
@@ -1096,6 +1171,13 @@ mod tests {
 
         // big tree
         verify_change_leaf_and_update(12, 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_change_leaf_and_update_range() -> Result<()> {
+        verify_change_leaf_and_update_range(1024, 68, 0, 32, 48);
 
         Ok(())
     }
