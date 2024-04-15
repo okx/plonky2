@@ -4,6 +4,7 @@ use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
+use std::collections::HashSet;
 #[cfg(feature = "cuda")]
 use std::os::raw::c_void;
 #[cfg(feature = "cuda")]
@@ -30,9 +31,9 @@ use crate::hash::hash_types::RichField;
 #[cfg(feature = "cuda")]
 use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher};
 #[cfg(feature = "cuda")]
 use crate::plonk::config::HasherType;
+use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
@@ -45,6 +46,9 @@ fn print_time(now: Instant, msg: &str) {
 
 #[cfg(not(feature = "cuda_timing"))]
 fn print_time(_now: Instant, _msg: &str) {}
+
+#[cfg(feature = "cuda")]
+const FORCE_SINGLE_GPU: bool = true;
 
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
 /// It can be used in place of the root to verify Merkle paths, which are `h` elements shorter.
@@ -313,7 +317,8 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
             .parse()
             .unwrap();
         // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
@@ -471,7 +476,8 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
@@ -588,12 +594,13 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
         {
-            println!("Multi GPU");
+            // println!("Multi GPU");
             fill_digests_buf_linear_multigpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
@@ -606,7 +613,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
                 H::HASHER_TYPE as u64,
             );
         } else {
-            println!("Single GPU");
+            // println!("Single GPU");
             fill_digests_buf_linear_gpu_with_gpu_ptr(
                 gpu_digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
                 gpu_cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
@@ -754,7 +761,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
     pub fn new_from_2d(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
         let leaf_size = leaves_2d[0].len();
-        let leaves_1d = leaves_2d.into_iter().flatten().collect();
+        let leaves_count = leaves_2d.len();
+        let zeros = vec![F::from_canonical_u64(0); leaf_size];
+        let mut leaves_1d: Vec<F> = Vec::with_capacity(leaves_count * leaf_size);
+        for idx in 0..leaves_count {
+            if leaves_2d[idx].len() == 0 {
+                leaves_1d.extend(zeros.clone());
+            } else {
+                leaves_1d.extend(leaves_2d[idx].clone());
+            }
+        }
         Self::new_from_1d(leaves_1d, leaf_size, cap_height)
     }
 
@@ -870,6 +886,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         assert_eq!(leaf.len(), self.leaf_size);
         let leaves_count = self.leaves.len() / self.leaf_size;
         assert!(leaf_index < leaves_count);
+
         let cap_height = log2_strict(self.cap.len());
         let mut leaves = self.leaves.clone();
         let start = leaf_index * self.leaf_size;
@@ -882,6 +899,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let cap_len = self.cap.0.len();
         let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
         let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        self.leaves = leaves;
         if digests_buf.is_empty() {
             cap_buf[leaf_index].write(H::hash_or_noop(leaf_copy.as_slice()));
         } else {
@@ -891,7 +909,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             let subtree_offset = subtree_idx * subtree_digests_len;
             let idx_in_subtree =
                 subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
-
             if subtree_leaves_len == 2 {
                 digests_buf[subtree_offset + idx_in_subtree]
                     .write(H::hash_or_noop(leaf_copy.as_slice()));
@@ -900,26 +917,135 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
                 let idx = subtree_offset + idx_in_subtree;
                 digests_buf[idx].write(H::hash_or_noop(leaf_copy.as_slice()));
                 let mut child_idx: i64 = idx_in_subtree as i64;
-                let mut parent_idx: i64 = (child_idx - 1) / 2;
+                let mut parent_idx: i64 = child_idx / 2 - 1;
                 while child_idx > 1 {
                     unsafe {
-                        let mut left_digest = digests_buf[child_idx as usize].assume_init();
-                        let mut right_digest = digests_buf[child_idx as usize + 1].assume_init();
-                        if idx_in_subtree & 1 == 1 {
-                            left_digest = digests_buf[child_idx as usize - 1].assume_init();
-                            right_digest = digests_buf[child_idx as usize].assume_init();
+                        let mut left_idx = subtree_offset + child_idx as usize;
+                        let mut right_idx = subtree_offset + child_idx as usize + 1;
+                        if child_idx & 1 == 1 {
+                            left_idx = subtree_offset + child_idx as usize - 1;
+                            right_idx = subtree_offset + child_idx as usize;
                         }
-                        digests_buf[parent_idx as usize]
+                        let left_digest = digests_buf[left_idx].assume_init();
+                        let right_digest = digests_buf[right_idx].assume_init();
+                        digests_buf[subtree_offset + parent_idx as usize]
                             .write(H::two_to_one(left_digest, right_digest));
                     }
                     child_idx = parent_idx;
-                    parent_idx = (child_idx - 1) / 2;
+                    parent_idx = child_idx / 2 - 1;
                 }
             }
             unsafe {
                 let left_digest = digests_buf[subtree_offset].assume_init();
                 let right_digest = digests_buf[subtree_offset + 1].assume_init();
                 cap_buf[subtree_idx].write(H::two_to_one(left_digest, right_digest));
+            }
+        }
+    }
+
+    pub fn change_leaves_in_range_and_update(
+        &mut self,
+        new_leaves: Vec<Vec<F>>,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        assert_eq!(new_leaves.len(), end_index - start_index);
+        assert_eq!(new_leaves[0].len(), self.leaf_size);
+
+        let tree_leaves_count = self.leaves.len() / self.leaf_size;
+        assert!(start_index < end_index);
+        assert!(end_index < tree_leaves_count);
+
+        let cap_height = log2_strict(self.cap.len());
+        let mut leaves = self.leaves.clone();
+
+        leaves[start_index * self.leaf_size..end_index * self.leaf_size]
+            .par_chunks_exact_mut(self.leaf_size)
+            .zip(new_leaves.clone())
+            .for_each(|(x, y)| {
+                for j in 0..self.leaf_size {
+                    x[j] = y[j];
+                }
+            });
+
+        let digests_len = self.digests.len();
+        let cap_len = self.cap.0.len();
+        let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
+        let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        self.leaves = leaves;
+        if digests_buf.is_empty() {
+            cap_buf[start_index..end_index]
+                .par_iter_mut()
+                .zip(new_leaves)
+                .for_each(|(cap, leaf)| {
+                    cap.write(H::hash_or_noop(leaf.as_slice()));
+                });
+        } else {
+            let subtree_leaves_len = tree_leaves_count >> cap_height;
+            let subtree_digests_len = digests_buf.len() >> cap_height;
+
+            let mut positions: Vec<usize> = (start_index..end_index)
+                .map(|idx| {
+                    let subtree_idx = idx / subtree_leaves_len;
+                    let subtree_offset = subtree_idx * subtree_digests_len;
+                    let idx_in_subtree =
+                        subtree_digests_len - subtree_leaves_len + idx % subtree_leaves_len;
+                    subtree_offset + idx_in_subtree
+                })
+                .collect();
+
+            // TODO change to parallel loop
+            for i in 0..positions.len() {
+                digests_buf[positions[i]].write(H::hash_or_noop(new_leaves[i].as_slice()));
+            }
+
+            if subtree_digests_len > 2 {
+                let rounds = log2_strict(tree_leaves_count) - cap_height - 1;
+                for _ in 0..rounds {
+                    let mut parent_indexes: HashSet<usize> = HashSet::new();
+                    let parents: Vec<usize> = positions
+                        .par_iter()
+                        .map(|pos| {
+                            let subtree_offset = pos / subtree_digests_len;
+                            let idx_in_subtree = pos % subtree_digests_len;
+                            let mut parent_idx = 0;
+                            if idx_in_subtree > 1 {
+                                parent_idx = idx_in_subtree / 2 - 1;
+                            }
+                            subtree_offset * subtree_digests_len + parent_idx
+                        })
+                        .collect();
+                    for p in parents {
+                        parent_indexes.insert(p);
+                    }
+                    positions = parent_indexes.into_iter().collect();
+
+                    // TODO change to parallel loop
+                    for i in 0..positions.len() {
+                        let subtree_offset = positions[i] / subtree_digests_len;
+                        let idx_in_subtree = positions[i] % subtree_digests_len;
+                        let digest_idx = subtree_offset * subtree_digests_len + 2 * (idx_in_subtree + 1);
+                        unsafe {
+                            let left_digest = digests_buf[digest_idx].assume_init();
+                            let right_digest = digests_buf[digest_idx + 1].assume_init();
+                            digests_buf[positions[i]].write(H::two_to_one(left_digest, right_digest));
+                        }
+                    }
+                }
+            }
+
+            let mut cap_indexes: HashSet<usize> = HashSet::new();
+            for idx in start_index..end_index {
+                cap_indexes.insert(idx / subtree_leaves_len);
+            }
+
+            unsafe {
+                for idx in cap_indexes {
+                    let digest_idx = idx * subtree_digests_len;
+                    let left_digest = digests_buf[digest_idx].assume_init();
+                    let right_digest = digests_buf[digest_idx + 1].assume_init();
+                    cap_buf[idx].write(H::two_to_one(left_digest, right_digest));
+                }
             }
         }
     }
@@ -1039,6 +1165,175 @@ mod tests {
             });
     }
 
+    fn verify_change_leaf_and_update_range_one_by_one(
+        leaves_count: usize,
+        leaf_size: usize,
+        cap_height: usize,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        use plonky2_field::types::Field;
+
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+
+        let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
+        let leaves2_1d: Vec<F> = leaves1_1d.clone();
+
+        let mut tree2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves2_1d, leaf_size, cap_height,
+        );
+
+        // v1
+        let now = Instant::now();
+        for i in start_index..end_index {
+            for j in 0..leaf_size {
+                leaves1_1d[i * leaf_size + j] = vals[i - start_index][j];
+            }
+        }
+        let tree1 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves1_1d, leaf_size, cap_height,
+        );
+        println!("Time V1: {} ms", now.elapsed().as_millis());
+
+        // v2
+        let now = Instant::now();
+        for idx in start_index..end_index {
+            let mut leaf: Vec<F> = vec![F::from_canonical_u64(0); leaf_size];
+            for j in 0..leaf_size {
+                leaf[j] = vals[idx - start_index][j];
+            }
+            tree2.change_leaf_and_update(leaf, idx);
+        }
+        println!("Time V2: {} ms", now.elapsed().as_millis());
+
+        // compare leaves
+        let t2leaves = tree2.get_leaves_1d();
+        tree1
+            .get_leaves_1d()
+            .chunks_exact(leaf_size)
+            .enumerate()
+            .for_each(|(i, x)| {
+                let mut ok = true;
+                for j in 0..leaf_size {
+                    if x[j] != t2leaves[i * leaf_size + j] {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    println!("Leaves different at index {:?}", i);
+                }
+                assert!(ok);
+            });
+
+        // compare trees
+        tree1.digests.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.digests[i];
+            if x != y {
+                println!("Digests different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+        tree1.cap.0.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.cap.0[i];
+            if x != y {
+                println!("Cap different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+    }
+
+    fn verify_change_leaf_and_update_range(
+        leaves_count: usize,
+        leaf_size: usize,
+        cap_height: usize,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        // use plonky2_field::types::Field;
+
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+
+        let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
+        let leaves2_1d: Vec<F> = leaves1_1d.clone();
+
+        let mut tree2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves2_1d, leaf_size, cap_height,
+        );
+
+        // v1
+        let now = Instant::now();
+        for i in start_index..end_index {
+            for j in 0..leaf_size {
+                leaves1_1d[i * leaf_size + j] = vals[i - start_index][j];
+            }
+        }
+        let tree1 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves1_1d, leaf_size, cap_height,
+        );
+        println!("Time V1: {} ms", now.elapsed().as_millis());
+
+        // v2
+        let now = Instant::now();
+        /*
+        for idx in start_index..end_index {
+            let mut leaf: Vec<F> = vec![F::from_canonical_u64(0); leaf_size];
+            for j in 0..leaf_size {
+                leaf[j] = vals[idx - start_index][j];
+            }
+            tree2.change_leaf_and_update(leaf, idx);
+        }
+        */
+        tree2.change_leaves_in_range_and_update(vals, start_index, end_index);
+        println!("Time V2: {} ms", now.elapsed().as_millis());
+
+        // compare leaves
+        let t2leaves = tree2.get_leaves_1d();
+        tree1
+            .get_leaves_1d()
+            .chunks_exact(leaf_size)
+            .enumerate()
+            .for_each(|(i, x)| {
+                let mut ok = true;
+                for j in 0..leaf_size {
+                    if x[j] != t2leaves[i * leaf_size + j] {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    println!("Leaves different at index {:?}", i);
+                }
+                assert!(ok);
+            });
+
+        // compare trees
+        tree1.digests.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.digests[i];
+            if x != y {
+                println!("Digests different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+        tree1.cap.0.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.cap.0[i];
+            if x != y {
+                println!("Cap different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+    }
+
     #[test]
     #[should_panic]
     fn test_cap_height_too_big() {
@@ -1081,6 +1376,18 @@ mod tests {
 
         // big tree
         verify_change_leaf_and_update(12, 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_change_leaf_and_update_range() -> Result<()> {
+        for h in 0..11 {
+            println!("Run verify_change_leaf_and_update_range_one_by_one() for height {:?}", h);
+            verify_change_leaf_and_update_range_one_by_one(1024, 68, h, 32, 48);
+            println!("Run verify_change_leaf_and_update_range() for height {:?}", h);
+            verify_change_leaf_and_update_range(1024, 68, h, 32, 48);
+        }
 
         Ok(())
     }
