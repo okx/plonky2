@@ -4,6 +4,50 @@ Plonky2 is a SNARK implementation based on techniques from PLONK and FRI. It is 
 
 Plonky2 is built for speed, and features a highly efficient recursive circuit. On a Macbook Pro, recursive proofs can be generated in about 170 ms.
 
+# Rust
+
+To use a nightly toolchain for Plonky2 by default, you can run
+
+```
+rustup override set nightly
+```
+
+# Plonky2 on GPU
+
+## Poseidon Hash on GPU (CUDA)
+
+Build the shared library
+
+```
+cd cryptography_cuda/cuda/merkle
+make lib
+make libgpu
+```
+
+Run tests (in plonky2 folder)
+
+```
+export LD_LIBRARY_PATH=<path-to cryptography_cuda/cuda/merkle>
+# CPU-only
+cargo test -- --nocapture merkle_trees
+# GPU
+cargo test --features=cuda -- --nocapture merkle_trees
+```
+
+Run benchmarks
+```
+# CPU
+cargo bench merkle
+# GPU
+cargo bench --features=cuda merkle
+```
+
+Run microbenchmarks
+
+```
+cd cryptography_cuda/cuda/merkle
+./run-benchmark.sh
+```
 
 ## License
 

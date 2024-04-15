@@ -13,7 +13,7 @@ use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
-use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher};
+use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct PoseidonBN128Permutation<F> {
@@ -149,6 +149,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonBN128Hash;
 impl<F: RichField> Hasher<F> for PoseidonBN128Hash {
+    const HASHER_TYPE: HasherType = HasherType::PoseidonBN128;
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonBN128Permutation<F>;
