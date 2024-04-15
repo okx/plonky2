@@ -346,7 +346,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         // If blinding, salt with two random elements to each leaf vector.
         let salt_size = if blinding { SALT_SIZE } else { 0 };
-        println!("salt_size: {:?}", salt_size);
+        // println!("salt_size: {:?}", salt_size);
 
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let num_gpus: usize = std::env::var("NUM_OF_GPUS")
@@ -357,7 +357,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         #[cfg(all(feature = "cuda", feature = "batch"))]
         println!("get num of gpus: {:?}", num_gpus);
         let total_num_of_fft = polynomials.len();
-        println!("total_num_of_fft: {:?}", total_num_of_fft);
+        // println!("total_num_of_fft: {:?}", total_num_of_fft);
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let per_device_batch = total_num_of_fft.div_ceil(num_gpus);
 
