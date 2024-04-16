@@ -23,7 +23,7 @@ rand = { workspace = true, features = ["getrandom"] }
 serde = { workspace = true, features = ["alloc"] }
 static_assertions = { workspace = true }
 unroll = { workspace = true }
-cryptography_cuda ={git="ssh://git@github.com/okx/cryptography_cuda.git", rev="d44b861cf241d27688525e7a8f082199a2abcbfa", optional=true, features=["no_cuda"]}
+cryptography_cuda ={git="ssh://git@github.com/okx/cryptography_cuda.git", rev="d44b861cf241d27688525e7a8f082199a2abcbfa", optional=true}
 
 [dev-dependencies]
 rand = { version = "0.8.5", default-features = false, features = ["getrandom"] }
