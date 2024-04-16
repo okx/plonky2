@@ -37,7 +37,7 @@ use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
-static GPU_LOCK: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+pub static GPU_LOCK: Lazy<Arc<Mutex<u64>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 #[cfg(feature = "cuda_timing")]
 fn print_time(now: Instant, msg: &str) {
@@ -283,7 +283,8 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    let mut lock = GPU_LOCK.lock().unwrap();
+    *lock += 1;
 
     unsafe {
         let now = Instant::now();
@@ -436,7 +437,8 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         cap_buf.len() * NUM_HASH_OUT_ELTS
     };
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    let mut lock = GPU_LOCK.lock().unwrap();
+    *lock += 1;
 
     // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
@@ -569,7 +571,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaf_len.try_into().unwrap();
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    GPU_LOCK.try_lock().expect_err("GPU_LOCK should be locked!");
 
     let now = Instant::now();
     // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
