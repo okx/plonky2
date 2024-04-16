@@ -221,7 +221,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D>
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InterpolationGenerator<F: RichField + Extendable<D>, const D: usize> {
     row: usize,
     gate: HighDegreeInterpolationGate<F, D>,

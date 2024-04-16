@@ -257,7 +257,7 @@ function r_wires_accs_start(i, num_coeffs) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingGate<D>,

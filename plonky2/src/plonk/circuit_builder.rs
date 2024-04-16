@@ -136,7 +136,7 @@ pub struct LookupWire {
 /// // Verify the proof
 /// assert!(circuit_data.verify(proof).is_ok());
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     /// Circuit configuration to be used by this [`CircuitBuilder`].
     pub config: CircuitConfig,

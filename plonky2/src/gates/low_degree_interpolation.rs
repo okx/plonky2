@@ -520,7 +520,7 @@ function two_adic_subgroup(i) {{
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InterpolationGenerator<F: RichField + Extendable<D>, const D: usize> {
     row: usize,
     gate: LowDegreeInterpolationGate<F, D>,
