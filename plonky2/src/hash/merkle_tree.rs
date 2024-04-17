@@ -406,6 +406,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     }
 }
 
+/*
 #[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
@@ -518,7 +519,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
         let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
         host_digests_buf
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(digests_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -538,7 +539,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
         let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
         host_caps_buf
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(cap_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -555,6 +556,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     }
     print_time(now, "copy results");
 }
+*/
 
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
@@ -651,7 +653,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
     if digests_buf.len() > 0 {
         host_digests
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(digests_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -669,7 +671,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
     if cap_buf.len() > 0 {
         host_caps
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(cap_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -962,7 +964,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let mut leaves = self.leaves.clone();
 
         leaves[start_index * self.leaf_size..end_index * self.leaf_size]
-            .par_chunks_exact_mut(self.leaf_size)
+            .chunks_exact_mut(self.leaf_size)
             .zip(new_leaves.clone())
             .for_each(|(x, y)| {
                 for j in 0..self.leaf_size {
