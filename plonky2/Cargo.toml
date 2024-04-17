@@ -2,7 +2,11 @@
 name = "plonky2"
 description = "Recursive SNARKs based on PLONK and FRI"
 version = "0.2.0"
-authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>", "Nicholas Ward <npward@berkeley.edu>"]
+authors = [
+    "Daniel Lubarov <daniel@lubarov.com>",
+    "William Borgeaud <williamborgeaud@gmail.com>",
+    "Nicholas Ward <npward@berkeley.edu>",
+]
 readme = "README.md"
 edition.workspace = true
 license.workspace = true
@@ -12,7 +16,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [features]
-default = ["gate_testing", "parallel", "rand_chacha", "std", "no_cuda"]
+default = ["gate_testing", "parallel", "rand_chacha", "std"]
 gate_testing = []
 parallel = ["hashbrown/rayon", "plonky2_maybe_rayon/parallel"]
 std = ["anyhow/std", "rand/std", "itertools/use_std"]
@@ -42,7 +46,7 @@ once_cell = { version = "1.18.0" }
 plonky2_field = { version = "0.2.0", path = "../field", default-features = false }
 plonky2_maybe_rayon = { version = "0.2.0", path = "../maybe_rayon", default-features = false }
 plonky2_util = { version = "0.2.0", path = "../util", default-features = false }
-cryptography_cuda ={git="ssh://git@github.com/okx/cryptography_cuda.git", rev="d44b861cf241d27688525e7a8f082199a2abcbfa", optional=true, features=["no_cuda"]}
+cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "56cee09dd044de44f05c7d54383c6a8cb4078b29", optional = true }
 dyn-clone = "1.0.17"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
