@@ -270,7 +270,6 @@ pub struct ProofChallenges<F: RichField + Extendable<D>, const D: usize> {
 
     // /// Lookup challenges.
     // pub plonk_deltas: Vec<F>,
-
     /// Point at which the PLONK polynomials are opened.
     pub plonk_zeta: F::Extension,
 

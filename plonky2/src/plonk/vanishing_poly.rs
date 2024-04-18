@@ -1,32 +1,22 @@
 #[cfg(not(feature = "std"))]
 use alloc::{format, vec, vec::Vec};
 
-
-
-
-
-
-
-
 use crate::field::batch_util::batch_add_inplace;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::Field;
 use crate::field::zero_poly_coset::ZeroPolyOnCoset;
-
-
-
 use crate::hash::hash_types::RichField;
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::circuit_data::CommonCircuitData;
+use crate::plonk::config::GenericConfig;
 use crate::plonk::plonk_common;
 use crate::plonk::plonk_common::eval_l_0_circuit;
 use crate::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBaseBatch};
 use crate::util::partial_products::{check_partial_products, check_partial_products_circuit};
 use crate::util::reducing::ReducingFactorTarget;
 use crate::util::strided_view::PackedStridedView;
-use crate::plonk::config::GenericConfig;
 use crate::with_context;
 
 // /// Get the polynomial associated to a lookup table with current challenges.
@@ -635,7 +625,6 @@ pub fn evaluate_gate_constraints_base_batch<
     constraints_batch
 }
 
-
 pub fn evaluate_gate_constraints_circuit<
     F: RichField + Extendable<D>,
     C: GenericConfig<D, F = F>,
@@ -798,7 +787,6 @@ pub(crate) fn eval_vanishing_poly_circuit<
         })
         .collect()
 }
-
 
 // Same as `check_lookup_constraints`, but for the recursive case.
 // pub fn check_lookup_constraints_circuit<F: RichField + Extendable<D>, const D: usize>(

@@ -1,12 +1,8 @@
-
 use core::ops::Range;
 
 use crate::field::extension::Extendable;
 use crate::gates::gate::Gate;
 use crate::hash::hash_types::RichField;
-
-
-
 use crate::plonk::circuit_data::CommonCircuitData;
 use crate::util::serialization::{Buffer, IoResult};
 /// Trait for gates which interpolate a polynomial, whose points are a (base field) coset of the multiplicative subgroup
@@ -19,14 +15,15 @@ pub(crate) trait InterpolationGate<F: RichField + Extendable<D>, const D: usize>
 
     fn id(&self) -> String {
         // Custom implementation to not have the entire lookup table
-        format!(
-            "InterpolationGate",
-        )
+        format!("InterpolationGate",)
     }
 
-    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+    fn serialize(
+        &self,
+        _dst: &mut Vec<u8>,
+        _common_data: &CommonCircuitData<F, D>,
+    ) -> IoResult<()> {
         todo!()
- 
     }
 
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {

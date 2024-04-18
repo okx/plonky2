@@ -10,7 +10,6 @@ use crate::fri::proof::{
 };
 use crate::fri::structure::{FriBatchInfoTarget, FriInstanceInfoTarget, FriOpeningsTarget};
 use crate::fri::{FriConfig, FriParams};
-
 use crate::gates::gate::Gate;
 use crate::gates::high_degree_interpolation::HighDegreeInterpolationGate;
 use crate::gates::interpolation::InterpolationGate;
@@ -50,7 +49,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let start = self.exp_from_bits_const_base(g_inv, x_index_within_coset_bits.iter().rev());
         let coset_start = self.mul(start, x);
 
-        // NOTE: circom_compatability 
+        // NOTE: circom_compatability
         // // The answer is gotten by interpolating {(x*g^i, P(x*g^i))} and evaluating at beta.
         // let interpolation_gate = <CosetInterpolationGate<F, D>>::with_max_degree(
         //     arity_bits,
@@ -275,7 +274,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
 
         // sum
-        // NOTE: circom_compatability 
+        // NOTE: circom_compatability
         // Multiply the final polynomial by `X`, so that `final_poly` has the maximum degree for
         // which the LDT will pass. See github.com/mir-protocol/plonky2/pull/436 for details.
         self.mul_extension(sum, subgroup_x)

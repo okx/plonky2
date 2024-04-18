@@ -1024,11 +1024,13 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
                     for i in 0..positions.len() {
                         let subtree_offset = positions[i] / subtree_digests_len;
                         let idx_in_subtree = positions[i] % subtree_digests_len;
-                        let digest_idx = subtree_offset * subtree_digests_len + 2 * (idx_in_subtree + 1);
+                        let digest_idx =
+                            subtree_offset * subtree_digests_len + 2 * (idx_in_subtree + 1);
                         unsafe {
                             let left_digest = digests_buf[digest_idx].assume_init();
                             let right_digest = digests_buf[digest_idx + 1].assume_init();
-                            digests_buf[positions[i]].write(H::two_to_one(left_digest, right_digest));
+                            digests_buf[positions[i]]
+                                .write(H::two_to_one(left_digest, right_digest));
                         }
                     }
                 }
@@ -1383,9 +1385,15 @@ mod tests {
     #[test]
     fn test_change_leaf_and_update_range() -> Result<()> {
         for h in 0..11 {
-            println!("Run verify_change_leaf_and_update_range_one_by_one() for height {:?}", h);
+            println!(
+                "Run verify_change_leaf_and_update_range_one_by_one() for height {:?}",
+                h
+            );
             verify_change_leaf_and_update_range_one_by_one(1024, 68, h, 32, 48);
-            println!("Run verify_change_leaf_and_update_range() for height {:?}", h);
+            println!(
+                "Run verify_change_leaf_and_update_range() for height {:?}",
+                h
+            );
             verify_change_leaf_and_update_range(1024, 68, h, 32, 48);
         }
 

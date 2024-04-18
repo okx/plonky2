@@ -3,6 +3,7 @@ use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+
 #[cfg(feature = "cuda")]
 use crate::test_utils::init_cuda;
 #[cfg(feature = "cuda")]
@@ -10,7 +11,6 @@ pub mod test_utils;
 
 #[test]
 fn test_fibonacci_proof() {
-
     #[cfg(feature = "cuda")]
     init_cuda();
 

@@ -115,7 +115,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulExtensionGa
         template_str
     }
 
-
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let const_0 = vars.local_constants[0];
 

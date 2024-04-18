@@ -8,6 +8,9 @@ use core::fmt::Debug;
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+#[cfg(target_feature = "avx2")]
+use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
+use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
 use crate::gates::gate::Gate;
@@ -19,10 +22,6 @@ use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
-#[cfg(target_feature = "avx2")]
-use super::arch::x86_64::poseidon_goldilocks_avx2::{poseidon_avx};
-
-use super::hash_types::HashOutTarget;
 
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;

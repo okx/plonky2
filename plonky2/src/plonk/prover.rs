@@ -2,33 +2,25 @@
 
 #[cfg(not(feature = "std"))]
 use alloc::{format, vec, vec::Vec};
-
 use core::mem::swap;
 
 use anyhow::{ensure, Result};
-
 use plonky2_maybe_rayon::*;
-
 
 use crate::field::extension::Extendable;
 use crate::field::polynomial::{PolynomialCoeffs, PolynomialValues};
 use crate::field::types::Field;
 use crate::field::zero_poly_coset::ZeroPolyOnCoset;
 use crate::fri::oracle::PolynomialBatch;
-
-
-
 use crate::hash::hash_types::RichField;
 use crate::iop::challenger::Challenger;
 use crate::iop::generator::generate_partial_witness;
-
 use crate::iop::witness::{MatrixWitness, PartialWitness, PartitionWitness, Witness};
-
 use crate::plonk::circuit_data::{CommonCircuitData, ProverOnlyCircuitData};
 use crate::plonk::config::{GenericConfig, Hasher};
 use crate::plonk::plonk_common::PlonkOracle;
 use crate::plonk::proof::{OpeningSet, Proof, ProofWithPublicInputs};
-use crate::plonk::vanishing_poly::{eval_vanishing_poly_base_batch};
+use crate::plonk::vanishing_poly::eval_vanishing_poly_base_batch;
 use crate::plonk::vars::EvaluationVarsBaseBatch;
 use crate::timed;
 use crate::util::partial_products::{partial_products_and_z_gx, quotient_chunk_products};
@@ -241,7 +233,7 @@ where
         timing,
         "commit to partial products, Z's and, if any, lookup polynomials",
         PolynomialBatch::from_values(
-            zs_partial_products,// zs_partial_products_lookups,
+            zs_partial_products, // zs_partial_products_lookups,
             config.fri_config.rate_bits,
             config.zero_knowledge && PlonkOracle::ZS_PARTIAL_PRODUCTS.blinding,
             config.fri_config.cap_height,
@@ -351,9 +343,9 @@ where
         openings,
         opening_proof,
     };
-    #[cfg(feature="timing")]
+    #[cfg(feature = "timing")]
     timing.print();
-    
+
     Ok(ProofWithPublicInputs::<F, C, D> {
         proof,
         public_inputs,
