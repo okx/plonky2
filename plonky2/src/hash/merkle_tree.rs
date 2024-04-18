@@ -37,7 +37,7 @@ use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
-static GPU_LOCK: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+pub static GPU_LOCK: Lazy<Arc<Mutex<u64>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 #[cfg(feature = "cuda_timing")]
 fn print_time(now: Instant, msg: &str) {
@@ -283,7 +283,8 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    let mut lock = GPU_LOCK.lock().unwrap();
+    *lock += 1;
 
     unsafe {
         let now = Instant::now();
@@ -405,6 +406,7 @@ fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
     }
 }
 
+/*
 #[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
@@ -436,7 +438,8 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         cap_buf.len() * NUM_HASH_OUT_ELTS
     };
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    let mut lock = GPU_LOCK.lock().unwrap();
+    *lock += 1;
 
     // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
@@ -516,7 +519,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
         let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
         host_digests_buf
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(digests_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -536,7 +539,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
         let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
         let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
         host_caps_buf
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(cap_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -553,6 +556,7 @@ fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
     }
     print_time(now, "copy results");
 }
+*/
 
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
@@ -569,7 +573,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaf_len.try_into().unwrap();
 
-    let _lock = GPU_LOCK.lock().unwrap();
+    GPU_LOCK.try_lock().expect_err("GPU_LOCK should be locked!");
 
     let now = Instant::now();
     // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
@@ -649,7 +653,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
     if digests_buf.len() > 0 {
         host_digests
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(digests_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -667,7 +671,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
     if cap_buf.len() > 0 {
         host_caps
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(cap_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -960,7 +964,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let mut leaves = self.leaves.clone();
 
         leaves[start_index * self.leaf_size..end_index * self.leaf_size]
-            .par_chunks_exact_mut(self.leaf_size)
+            .chunks_exact_mut(self.leaf_size)
             .zip(new_leaves.clone())
             .for_each(|(x, y)| {
                 for j in 0..self.leaf_size {
