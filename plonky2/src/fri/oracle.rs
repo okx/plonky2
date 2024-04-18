@@ -6,8 +6,6 @@ use cryptography_cuda::{
     device::memory::HostOrDeviceSlice, lde_batch, lde_batch_multi_gpu, transpose_rev_batch,
     types::*,
 };
-#[cfg(feature = "cuda")]
-use crate::hash::merkle_tree::GPU_LOCK;
 
 use itertools::Itertools;
 use plonky2_field::types::Field;
@@ -245,10 +243,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         log_n: usize,
         _degree: usize,
     ) -> MerkleTree<F, <C as GenericConfig<D>>::Hasher> {
-
-        let mut lock = GPU_LOCK.lock().unwrap();
-        *lock += 1;
-
         // let salt_size = if blinding { SALT_SIZE } else { 0 };
         // println!("salt_size: {:?}", salt_size);
         let output_domain_size = log_n + rate_bits;
@@ -374,9 +368,6 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 
         #[cfg(all(feature = "cuda", feature = "batch"))]
         if log_n > 10 && polynomials.len() > 0 {
-            let mut lock = GPU_LOCK.lock().unwrap();
-            *lock += 1;
-
             println!("log_n: {:?}", log_n);
             let start_lde = std::time::Instant::now();
 
