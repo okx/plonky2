@@ -3,7 +3,7 @@ members = ["field", "maybe_rayon", "plonky2", "starky", "util", "gen"]
 resolver = "2"
 
 [workspace.dependencies]
-cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "d44b861cf241d27688525e7a8f082199a2abcbfa", features = [
+cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "173510160183f3299f4765b30bd4f2c1685353f9", features = [
     "no_cuda",
 ] }
 ahash = { version = "0.8.7", default-features = false, features = [
