@@ -40,7 +40,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for NoopGate {
         unimplemented!()
     }
 
-
     fn eval_unfiltered(&self, _vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         Vec::new()
     }

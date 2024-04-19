@@ -2,7 +2,11 @@
 name = "plonky2"
 description = "Recursive SNARKs based on PLONK and FRI"
 version = "0.2.0"
-authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>", "Nicholas Ward <npward@berkeley.edu>"]
+authors = [
+    "Daniel Lubarov <daniel@lubarov.com>",
+    "William Borgeaud <williamborgeaud@gmail.com>",
+    "Nicholas Ward <npward@berkeley.edu>",
+]
 readme = "README.md"
 edition.workspace = true
 license.workspace = true
@@ -42,7 +46,8 @@ once_cell = { version = "1.18.0" }
 plonky2_field = { version = "0.2.0", path = "../field", default-features = false }
 plonky2_maybe_rayon = { version = "0.2.0", path = "../maybe_rayon", default-features = false }
 plonky2_util = { version = "0.2.0", path = "../util", default-features = false }
-cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "173510160183f3299f4765b30bd4f2c1685353f9", optional = true }
+cryptography_cuda = { workspace = true, optional = true }
+dyn-clone = "1.0.17"
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dependencies]
 getrandom = { version = "0.2", default-features = false, features = ["js"] }

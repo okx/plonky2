@@ -37,6 +37,7 @@ include!(concat!(env!("OUT_DIR"), "/goldilock_root_of_unity.rs"));
 
 #[cfg(feature = "precompile")]
 use std::collections::HashMap;
+
 #[cfg(feature = "precompile")]
 use fft::FftRootTable;
 #[cfg(feature = "precompile")]
@@ -79,7 +80,6 @@ lazy_static! {
 
 #[cfg(test)]
 mod test {
-    
 
     #[cfg(feature = "precompile")]
     #[test]

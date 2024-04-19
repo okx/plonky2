@@ -1,4 +1,3 @@
-
 use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
@@ -11,8 +10,7 @@ use crate::test_utils::init_cuda;
 pub mod test_utils;
 
 #[test]
-fn test_factorial_proof(){
-
+fn test_factorial_proof() {
     #[cfg(feature = "cuda")]
     init_cuda();
 
@@ -46,5 +44,5 @@ fn test_factorial_proof(){
         proof.public_inputs[0], proof.public_inputs[1]
     );
 
-    let _= data.verify(proof);
+    let _ = data.verify(proof);
 }

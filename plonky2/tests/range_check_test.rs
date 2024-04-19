@@ -1,9 +1,9 @@
-
 use plonky2::field::types::Field;
 use plonky2::iop::witness::{PartialWitness, WitnessWrite};
 use plonky2::plonk::circuit_builder::CircuitBuilder;
 use plonky2::plonk::circuit_data::CircuitConfig;
 use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+
 #[cfg(feature = "cuda")]
 use crate::test_utils::init_cuda;
 #[cfg(feature = "cuda")]
@@ -33,7 +33,6 @@ fn test_range_check_proof() {
 
     let data = builder.build::<C>();
     let proof = data.prove(pw).unwrap();
-
 
     let _ = data.verify(proof);
 }

@@ -10,8 +10,8 @@ use core::ptr::{swap, swap_nonoverlapping};
 
 use crate::transpose_util::transpose_in_place_square;
 
-mod transpose_util;
 pub mod pre_compute;
+mod transpose_util;
 
 pub const fn bits_u64(n: u64) -> usize {
     (64 - n.leading_zeros()) as usize

@@ -21,7 +21,6 @@ use std::collections::BTreeMap;
 use anyhow::Result;
 use serde::Serialize;
 
-
 use crate::field::extension::Extendable;
 use crate::field::fft::FftRootTable;
 use crate::field::types::Field;
@@ -33,8 +32,6 @@ use crate::fri::structure::{
 };
 use crate::fri::{FriConfig, FriParams};
 use crate::gates::gate::GateRef;
-
-
 use crate::gates::selectors::SelectorsInfo;
 use crate::hash::hash_types::{HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_tree::MerkleCap;
@@ -442,7 +439,6 @@ pub struct CommonCircuitData<F: RichField + Extendable<D>, const D: usize> {
 
     /// The number of partial products needed to compute the `Z` polynomials.
     pub num_partial_products: usize,
-
     // /// The number of lookup polynomials.
     // pub num_lookup_polys: usize,
 

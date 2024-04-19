@@ -10,7 +10,6 @@ use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, info, warn, Level};
 
-
 use crate::field::cosets::get_unique_coset_shifts;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::fft::fft_root_table;
@@ -25,11 +24,11 @@ use crate::gates::arithmetic_base::ArithmeticGate;
 use crate::gates::arithmetic_extension::ArithmeticExtensionGate;
 use crate::gates::constant::ConstantGate;
 use crate::gates::gate::{CurrentSlot, Gate, GateInstance, GateRef};
-use crate::gates::lookup::{Lookup};
+use crate::gates::lookup::Lookup;
 use crate::gates::lookup_table::LookupTable;
 use crate::gates::noop::NoopGate;
 use crate::gates::public_input::PublicInputGate;
-use crate::gates::selectors::{selector_polynomials};
+use crate::gates::selectors::selector_polynomials;
 use crate::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_proofs::MerkleProofTarget;
 use crate::hash::merkle_tree::MerkleCap;
@@ -136,7 +135,7 @@ pub struct LookupWire {
 /// // Verify the proof
 /// assert!(circuit_data.verify(proof).is_ok());
 /// ```
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     /// Circuit configuration to be used by this [`CircuitBuilder`].
     pub config: CircuitConfig,

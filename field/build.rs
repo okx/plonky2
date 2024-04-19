@@ -1,11 +1,11 @@
 use std::env;
 use std::fs::write;
-use std::path::{Path};
-#[cfg(feature = "precompile")]
-use std::Path::{PathBuf};
+use std::path::Path;
 use std::process::Command;
 #[cfg(feature = "precompile")]
 use std::str::FromStr;
+#[cfg(feature = "precompile")]
+use std::Path::PathBuf;
 
 use anyhow::Context;
 #[cfg(feature = "precompile")]
@@ -29,7 +29,6 @@ fn build_precompile() {
     _ = write_generated_file(token_stream, "goldilock_root_of_unity.rs");
 }
 fn main() {
-
     #[cfg(feature = "precompile")]
     build_precompile();
 }

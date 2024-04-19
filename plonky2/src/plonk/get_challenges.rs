@@ -3,7 +3,6 @@ use alloc::{vec, vec::Vec};
 
 use hashbrown::HashSet;
 
-
 use crate::field::extension::Extendable;
 use crate::field::polynomial::PolynomialCoeffs;
 use crate::fri::proof::{CompressedFriProof, FriChallenges, FriProof, FriProofTarget};

@@ -1,13 +1,8 @@
 use core::arch::x86_64::*;
 
+use super::goldilocks_avx2::{add_avx, add_avx_a_sc, mult_avx};
 /// Code taken and adapted from: https://github.com/0xPolygonHermez/goldilocks/blob/master/src/goldilocks_base_field_avx.hpp
-use crate::hash::{
-    hash_types::RichField, poseidon2::RC12, poseidon2::SPONGE_WIDTH,
-};
-
-use super::goldilocks_avx2::add_avx;
-use super::goldilocks_avx2::add_avx_a_sc;
-use super::goldilocks_avx2::mult_avx;
+use crate::hash::{hash_types::RichField, poseidon2::RC12, poseidon2::SPONGE_WIDTH};
 
 #[inline(always)]
 pub fn add_rc_avx<F>(state: &mut [F; SPONGE_WIDTH], rc: &[u64; SPONGE_WIDTH])

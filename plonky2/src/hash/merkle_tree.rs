@@ -275,9 +275,9 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     let leaves_count = leaves.len() / leaf_size;
 
     let num_gpus: usize = std::env::var("NUM_OF_GPUS")
-            .expect("NUM_OF_GPUS should be set")
-            .parse()
-            .unwrap();
+        .expect("NUM_OF_GPUS should be set")
+        .parse()
+        .unwrap();
 
     let mut gpu_id_lock = GPU_ID.lock().unwrap();
     let gpu_id = *gpu_id_lock;

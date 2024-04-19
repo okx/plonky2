@@ -101,9 +101,9 @@ pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
     ) -> Self::AlgebraicPermutation
     where
         F: RichField + Extendable<D>;
-    
-     /// Circuit to calculate hash out for public inputs.
-     fn public_inputs_hash<const D: usize>(
+
+    /// Circuit to calculate hash out for public inputs.
+    fn public_inputs_hash<const D: usize>(
         inputs: Vec<Target>,
         builder: &mut CircuitBuilder<F, D>,
     ) -> HashOutTarget

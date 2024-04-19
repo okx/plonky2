@@ -1,4 +1,3 @@
-
 use alloc::string::String;
 use alloc::vec::Vec;
 use alloc::{format, vec};
@@ -87,9 +86,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for LowDegreeInter
     fn id(&self) -> String {
         format!("{self:?}<D={D}>")
     }
-    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+    fn serialize(
+        &self,
+        _dst: &mut Vec<u8>,
+        _common_data: &CommonCircuitData<F, D>,
+    ) -> IoResult<()> {
         todo!()
- 
     }
 
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
@@ -520,7 +522,7 @@ function two_adic_subgroup(i) {{
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct InterpolationGenerator<F: RichField + Extendable<D>, const D: usize> {
     row: usize,
     gate: LowDegreeInterpolationGate<F, D>,
@@ -534,7 +536,11 @@ impl<F: RichField + Extendable<D>, const D: usize> SimpleGenerator<F, D>
         "InterpolationGenerator".to_string()
     }
 
-    fn serialize(&self, _dst: &mut Vec<u8>, _common_data: &CommonCircuitData<F, D>) -> IoResult<()> {
+    fn serialize(
+        &self,
+        _dst: &mut Vec<u8>,
+        _common_data: &CommonCircuitData<F, D>,
+    ) -> IoResult<()> {
         todo!()
         // dst.write_usize(self.row)?;
         // self.gate.serialize(dst, _common_data)

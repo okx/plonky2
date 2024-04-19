@@ -210,11 +210,10 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use plonky2_field::types::{Field};
+    use plonky2_field::types::Field;
+
     use super::PoseidonBN128Hash;
-    use crate::plonk::{config::{
-        GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig,
-    }};
+    use crate::plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig};
 
     #[test]
     fn test_poseidon_bn128_hash_no_pad() -> Result<()> {
@@ -286,5 +285,4 @@ mod tests {
 
         Ok(())
     }
-
 }
