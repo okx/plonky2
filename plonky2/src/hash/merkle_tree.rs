@@ -1,10 +1,10 @@
 #[cfg(feature = "cuda")]
 use alloc::sync::Arc;
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;
 use core::slice;
-#[cfg(feature = "cuda")]
-use std::os::raw::c_void;
+use std::collections::HashSet;
 #[cfg(feature = "cuda")]
 use std::sync::Mutex;
 use std::time::Instant;
@@ -15,9 +15,7 @@ use cryptography_cuda::device::memory::HostOrDeviceSlice;
 use cryptography_cuda::device::stream::CudaStream;
 #[cfg(feature = "cuda")]
 use cryptography_cuda::merkle::bindings::{
-    fill_delete, fill_digests_buf_linear_gpu, fill_digests_buf_linear_gpu_with_gpu_ptr,
-    fill_digests_buf_linear_multigpu, fill_digests_buf_linear_multigpu_with_gpu_ptr, fill_init,
-    get_cap_ptr, get_digests_ptr, get_leaves_ptr,
+    fill_digests_buf_linear_gpu_with_gpu_ptr, fill_digests_buf_linear_multigpu_with_gpu_ptr,
 };
 use num::range;
 #[cfg(feature = "cuda")]
@@ -29,13 +27,13 @@ use crate::hash::hash_types::RichField;
 #[cfg(feature = "cuda")]
 use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
 use crate::hash::merkle_proofs::MerkleProof;
-use crate::plonk::config::{GenericHashOut, Hasher};
 #[cfg(feature = "cuda")]
 use crate::plonk::config::HasherType;
+use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
 #[cfg(feature = "cuda")]
-static gpu_lock: Lazy<Arc<Mutex<i32>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
+pub static GPU_ID: Lazy<Arc<Mutex<u64>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
 #[cfg(feature = "cuda_timing")]
 fn print_time(now: Instant, msg: &str) {
@@ -44,6 +42,9 @@ fn print_time(now: Instant, msg: &str) {
 
 #[cfg(not(feature = "cuda_timing"))]
 fn print_time(_now: Instant, _msg: &str) {}
+
+#[cfg(feature = "cuda")]
+const FORCE_SINGLE_GPU: bool = true;
 
 /// The Merkle cap of height `h` of a Merkle tree is the `h`-th layer (from the root) of the tree.
 /// It can be used in place of the root to verify Merkle paths, which are `h` elements shorter.
@@ -264,287 +265,48 @@ union U8U64 {
 }
 
 #[cfg(feature = "cuda")]
-fn fill_digests_buf_gpu_v1<F: RichField, H: Hasher<F>>(
+fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
     leaves: &Vec<F>,
     leaf_size: usize,
     cap_height: usize,
 ) {
-    let digests_count: u64 = digests_buf.len().try_into().unwrap();
-    let leaves_count: u64 = (leaves.len() / leaf_size).try_into().unwrap();
-    let leaf_size: u64 = leaf_size.try_into().unwrap();
-    let caps_count: u64 = cap_buf.len().try_into().unwrap();
-    let cap_height: u64 = cap_height.try_into().unwrap();
-    let hash_size: u64 = H::HASH_SIZE.try_into().unwrap();
+    let leaves_count = leaves.len() / leaf_size;
 
-    let _lock = gpu_lock.lock().unwrap();
-
-    unsafe {
-        let now = Instant::now();
-        fill_init(
-            digests_count,
-            leaves_count,
-            caps_count,
-            leaf_size,
-            hash_size,
-            H::HASHER_TYPE as u64,
-        );
-        print_time(now, "fill init");
-        let now = Instant::now();
-
-        // copy data to C
-        let mut pd: *mut u64 = get_digests_ptr();
-        let mut pl: *mut u64 = get_leaves_ptr();
-        let mut pc: *mut u64 = get_cap_ptr();
-
-        for elem in leaves {
-            let val = &elem.to_canonical_u64();
-            *pl = *val;
-            pl = pl.add(1);
-        }
-
-        print_time(now, "copy data to C");
-        let now = Instant::now();
-
-        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
+    let num_gpus: usize = std::env::var("NUM_OF_GPUS")
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        // println!("Digest size {}, Leaves {}, Leaf size {}, Cap H {}", digests_count, leaves_count, leaf_size, cap_height);
-        if leaves_count >= (1 << 12)
-            && cap_height > 0
-            && num_gpus > 1
-            && H::HASHER_TYPE == HasherType::PoseidonBN128
-        {
-            // println!("Multi GPU");
-            fill_digests_buf_linear_multigpu(
-                digests_count,
-                caps_count,
-                leaves_count,
-                leaf_size,
-                cap_height,
-                num_gpus as u64,
-            );
-        } else {
-            // println!("Single GPU");
-            fill_digests_buf_linear_gpu(
-                digests_count,
-                caps_count,
-                leaves_count,
-                leaf_size,
-                cap_height,
-            );
-        }
 
-        print_time(now, "kernel");
-        let now = Instant::now();
-
-        // TODO - debug code - to remove in future
-        // let mut pd : *mut u64 = get_digests_ptr();
-        /*
-        println!("*** Digests");
-        for i in 0..leaves.len() {
-            for j in 0..leaf_size {
-                print!("{} ", *pd);
-                pd = pd.add(1);
-            }
-            println!();
-        }
-        pd = get_digests_ptr();
-        */
-        /*
-        let fname = format!("gpu-{}-{}-{}-{}.txt", digests_count, leaves_count, leaf_size, cap_height);
-        let mut file = File::create(fname).unwrap();
-        for _i in 0..digests_count {
-            for _j in 0..4 {
-                let str = format!("{} ", *pd);
-                file.write_all(str.as_bytes());
-                pd = pd.add(1);
-            }
-            file.write_all(b"\n");
-        }
-        pd = get_digests_ptr();
-        */
-
-        // copy data from C
-        for dg in digests_buf {
-            let mut parts = U8U64 { f1: [0; 32] };
-            // copy hash from pd to digests_buf
-            for i in 0..4 {
-                parts.f2[i] = *pd;
-                pd = pd.add(1);
-            }
-            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(slice);
-            dg.write(h);
-        }
-        for cp in cap_buf {
-            let mut parts = U8U64 { f1: [0; 32] };
-            // copy hash from pc to cap_buf
-            for i in 0..4 {
-                parts.f2[i] = *pc;
-                pc = pc.add(1);
-            }
-            let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-            let h: H::Hash = H::Hash::from_bytes(slice);
-            cp.write(h);
-        }
-
-        print_time(now, "copy results");
-        let now = Instant::now();
-
-        fill_delete();
-        print_time(now, "fill delete");
+    let mut gpu_id_lock = GPU_ID.lock().unwrap();
+    let gpu_id = *gpu_id_lock;
+    *gpu_id_lock += 1;
+    if *gpu_id_lock >= num_gpus as u64 {
+        *gpu_id_lock = 0;
     }
-}
-
-#[allow(dead_code)]
-#[cfg(feature = "cuda")]
-fn fill_digests_buf_gpu_v2<F: RichField, H: Hasher<F>>(
-    digests_buf: &mut [MaybeUninit<H::Hash>],
-    cap_buf: &mut [MaybeUninit<H::Hash>],
-    leaves: &Vec<F>,
-    leaf_size: usize,
-    cap_height: usize,
-) {
-    let digests_count: u64 = digests_buf.len().try_into().unwrap();
-    let leaves_count: u64 = (leaves.len() / leaf_size).try_into().unwrap();
-    let caps_count: u64 = cap_buf.len().try_into().unwrap();
-    let cap_height: u64 = cap_height.try_into().unwrap();
-    let leaf_size: u64 = leaf_size.try_into().unwrap();
-
-    let leaves_size = leaves.len();
+    Mutex::unlock(gpu_id_lock);
 
     let now = Instant::now();
-
-    // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
-    let digests_size = if digests_buf.len() == 0 {
-        NUM_HASH_OUT_ELTS
-    } else {
-        digests_buf.len() * NUM_HASH_OUT_ELTS
-    };
-    let caps_size = if cap_buf.len() == 0 {
-        NUM_HASH_OUT_ELTS
-    } else {
-        cap_buf.len() * NUM_HASH_OUT_ELTS
-    };
-
-    let _lock = gpu_lock.lock().unwrap();
-
-    // println!("{} {} {} {} {:?}", leaves_count, leaf_size, digests_count, caps_count, H::HASHER_TYPE);
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
-        HostOrDeviceSlice::cuda_malloc(0, leaves_size).unwrap();
-    let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
-        HostOrDeviceSlice::cuda_malloc(0, digests_size).unwrap();
-    let mut gpu_caps_buf: HostOrDeviceSlice<'_, F> =
-        HostOrDeviceSlice::cuda_malloc(0, caps_size).unwrap();
-    print_time(now, "alloc gpu ds");
+        HostOrDeviceSlice::cuda_malloc(gpu_id as i32, leaves.len()).unwrap();
+    print_time(now, "alloc gpu leaves buffer");
+
     let now = Instant::now();
+    let _ = gpu_leaves_buf.copy_from_host(leaves.as_slice());
+    print_time(now, "leaves copy to gpu");
 
-    // Note: flatten() is very slow, so we use a naive nested for loop
-    // let leaves1 = leaves.to_vec().into_iter().flatten().collect::<Vec<F>>();
-
-    // v1: use 2 for loops - better than flatten()
-    let mut leaves1 = Vec::with_capacity(leaves_size);
-    for el in leaves {
-        leaves1.push(el.clone());
-    }
-    /*
-    // v2: use par chunks - same performance
-    let mut leaves1 = vec![F::ZERO; leaves.len() * leaves[0].len()];
-    leaves1.par_chunks_exact_mut(leaves[0].len()).enumerate().for_each(
-        |(i, c)| {
-            c.copy_from_slice(leaves[i].as_slice());
-        }
+    let now = Instant::now();
+    fill_digests_buf_gpu_ptr::<F, H>(
+        digests_buf,
+        cap_buf,
+        gpu_leaves_buf.as_mut_ptr(),
+        leaves_count,
+        leaf_size,
+        cap_height,
+        gpu_id,
     );
-    */
-
-    let _ = gpu_leaves_buf.copy_from_host(leaves1.as_slice());
-
-    print_time(now, "data copy to gpu");
-    let now = Instant::now();
-
-    unsafe {
-        let num_gpus: usize = std::env::var("NUM_OF_GPUS")
-            .expect("NUM_OF_GPUS should be set")
-            .parse()
-            .unwrap();
-        if leaves_count >= (1 << 12)
-            && cap_height > 0
-            && num_gpus > 1
-            && H::HASHER_TYPE == HasherType::PoseidonBN128
-        {
-            // println!("Multi GPU");
-            fill_digests_buf_linear_multigpu_with_gpu_ptr(
-                gpu_digests_buf.as_mut_ptr() as *mut c_void,
-                gpu_caps_buf.as_mut_ptr() as *mut c_void,
-                gpu_leaves_buf.as_ptr() as *mut c_void,
-                digests_count,
-                caps_count,
-                leaves_count,
-                leaf_size,
-                cap_height,
-                H::HASHER_TYPE as u64,
-            );
-        } else {
-            // println!("Single GPU");
-            fill_digests_buf_linear_gpu_with_gpu_ptr(
-                gpu_digests_buf.as_mut_ptr() as *mut c_void,
-                gpu_caps_buf.as_mut_ptr() as *mut c_void,
-                gpu_leaves_buf.as_ptr() as *mut c_void,
-                digests_count,
-                caps_count,
-                leaves_count,
-                leaf_size,
-                cap_height,
-                H::HASHER_TYPE as u64,
-            );
-        }
-    };
-    print_time(now, "kernel");
-    let now = Instant::now();
-
-    if digests_buf.len() > 0 {
-        let mut host_digests_buf: Vec<F> = vec![F::ZERO; digests_size];
-        let _ = gpu_digests_buf.copy_to_host(host_digests_buf.as_mut_slice(), digests_size);
-        host_digests_buf
-            .par_chunks_exact(4)
-            .zip(digests_buf)
-            .for_each(|(x, y)| {
-                unsafe {
-                    let mut parts = U8U64 { f1: [0; 32] };
-                    parts.f2[0] = x[0].to_canonical_u64();
-                    parts.f2[1] = x[1].to_canonical_u64();
-                    parts.f2[2] = x[2].to_canonical_u64();
-                    parts.f2[3] = x[3].to_canonical_u64();
-                    let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-                    let h: H::Hash = H::Hash::from_bytes(slice);
-                    y.write(h);
-                };
-            });
-    }
-
-    if cap_buf.len() > 0 {
-        let mut host_caps_buf: Vec<F> = vec![F::ZERO; caps_size];
-        let _ = gpu_caps_buf.copy_to_host(host_caps_buf.as_mut_slice(), caps_size);
-        host_caps_buf
-            .par_chunks_exact(4)
-            .zip(cap_buf)
-            .for_each(|(x, y)| {
-                unsafe {
-                    let mut parts = U8U64 { f1: [0; 32] };
-                    parts.f2[0] = x[0].to_canonical_u64();
-                    parts.f2[1] = x[1].to_canonical_u64();
-                    parts.f2[2] = x[2].to_canonical_u64();
-                    parts.f2[3] = x[3].to_canonical_u64();
-                    let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-                    let h: H::Hash = H::Hash::from_bytes(slice);
-                    y.write(h);
-                };
-            });
-    }
-    print_time(now, "copy results");
+    print_time(now, "fill_digests_buf_gpu_ptr");
 }
 
 #[cfg(feature = "cuda")]
@@ -555,14 +317,13 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     leaves_len: usize,
     leaf_len: usize,
     cap_height: usize,
+    gpu_id: u64,
 ) {
     let digests_count: u64 = digests_buf.len().try_into().unwrap();
     let leaves_count: u64 = leaves_len.try_into().unwrap();
     let caps_count: u64 = cap_buf.len().try_into().unwrap();
     let cap_height: u64 = cap_height.try_into().unwrap();
     let leaf_size: u64 = leaf_len.try_into().unwrap();
-
-    let _lock = gpu_lock.lock().unwrap();
 
     let now = Instant::now();
     // if digests_buf is empty (size 0), just allocate a few bytes to avoid errors
@@ -578,16 +339,17 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     };
 
     let mut gpu_digests_buf: HostOrDeviceSlice<'_, F> =
-        HostOrDeviceSlice::cuda_malloc(0 as i32, digests_size).unwrap();
+        HostOrDeviceSlice::cuda_malloc(gpu_id as i32, digests_size).unwrap();
     let mut gpu_cap_buf: HostOrDeviceSlice<'_, F> =
-        HostOrDeviceSlice::cuda_malloc(0 as i32, caps_size).unwrap();
+        HostOrDeviceSlice::cuda_malloc(gpu_id as i32, caps_size).unwrap();
 
     unsafe {
         let num_gpus: usize = std::env::var("NUM_OF_GPUS")
             .expect("NUM_OF_GPUS should be set")
             .parse()
             .unwrap();
-        if leaves_count >= (1 << 12)
+        if !FORCE_SINGLE_GPU
+            && leaves_count >= (1 << 12)
             && cap_height > 0
             && num_gpus > 1
             && H::HASHER_TYPE == HasherType::PoseidonBN128
@@ -616,6 +378,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
                 leaf_size,
                 cap_height,
                 H::HASHER_TYPE as u64,
+                gpu_id,
             );
         }
     }
@@ -641,7 +404,7 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
 
     if digests_buf.len() > 0 {
         host_digests
-            .par_chunks_exact(4)
+            .chunks_exact(4)
             .zip(digests_buf)
             .for_each(|(x, y)| {
                 unsafe {
@@ -658,21 +421,18 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     }
 
     if cap_buf.len() > 0 {
-        host_caps
-            .par_chunks_exact(4)
-            .zip(cap_buf)
-            .for_each(|(x, y)| {
-                unsafe {
-                    let mut parts = U8U64 { f1: [0; 32] };
-                    parts.f2[0] = x[0].to_canonical_u64();
-                    parts.f2[1] = x[1].to_canonical_u64();
-                    parts.f2[2] = x[2].to_canonical_u64();
-                    parts.f2[3] = x[3].to_canonical_u64();
-                    let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
-                    let h: H::Hash = H::Hash::from_bytes(slice);
-                    y.write(h);
-                };
-            });
+        host_caps.chunks_exact(4).zip(cap_buf).for_each(|(x, y)| {
+            unsafe {
+                let mut parts = U8U64 { f1: [0; 32] };
+                parts.f2[0] = x[0].to_canonical_u64();
+                parts.f2[1] = x[1].to_canonical_u64();
+                parts.f2[2] = x[2].to_canonical_u64();
+                parts.f2[3] = x[3].to_canonical_u64();
+                let (slice, _) = parts.f1.split_at(H::HASH_SIZE);
+                let h: H::Hash = H::Hash::from_bytes(slice);
+                y.write(h);
+            };
+        });
     }
     print_time(now, "copy results");
 }
@@ -685,11 +445,11 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     leaf_size: usize,
     cap_height: usize,
 ) {
-    // if the input is small or if it Keccak hashing, just do the hashing on CPU    
+    // if the input is small or if it Keccak hashing, just do the hashing on CPU
     if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
-        fill_digests_buf_gpu_v1::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
+        fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     }
 }
 
@@ -753,7 +513,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 
     pub fn new_from_2d(leaves_2d: Vec<Vec<F>>, cap_height: usize) -> Self {
         let leaf_size = leaves_2d[0].len();
-        let leaves_1d = leaves_2d.into_iter().flatten().collect();
+        let leaves_count = leaves_2d.len();
+        let zeros = vec![F::from_canonical_u64(0); leaf_size];
+        let mut leaves_1d: Vec<F> = Vec::with_capacity(leaves_count * leaf_size);
+        for idx in 0..leaves_count {
+            if leaves_2d[idx].len() == 0 {
+                leaves_1d.extend(zeros.clone());
+            } else {
+                leaves_1d.extend(leaves_2d[idx].clone());
+            }
+        }
         Self::new_from_1d(leaves_1d, leaf_size, cap_height)
     }
 
@@ -805,6 +574,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
         let now = Instant::now();
+        let gpu_id = 0;
         fill_digests_buf_gpu_ptr::<F, H>(
             digests_buf,
             cap_buf,
@@ -812,6 +582,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             leaves_len,
             leaf_len,
             cap_height,
+            gpu_id,
         );
         print_time(now, "fill digests buffer");
 
@@ -848,11 +619,11 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         v
     }
 
-    pub fn get_leaves_1D(&self) -> Vec<F> {
+    pub fn get_leaves_1d(&self) -> Vec<F> {
         self.leaves.clone()
     }
 
-    pub fn get_leaves_2D(&self) -> Vec<Vec<F>> {
+    pub fn get_leaves_2d(&self) -> Vec<Vec<F>> {
         let v2d: Vec<Vec<F>> = self
             .leaves
             .chunks_exact(self.leaf_size)
@@ -869,6 +640,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         assert_eq!(leaf.len(), self.leaf_size);
         let leaves_count = self.leaves.len() / self.leaf_size;
         assert!(leaf_index < leaves_count);
+
         let cap_height = log2_strict(self.cap.len());
         let mut leaves = self.leaves.clone();
         let start = leaf_index * self.leaf_size;
@@ -881,6 +653,7 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         let cap_len = self.cap.0.len();
         let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
         let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        self.leaves = leaves;
         if digests_buf.is_empty() {
             cap_buf[leaf_index].write(H::hash_or_noop(leaf_copy.as_slice()));
         } else {
@@ -890,7 +663,6 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
             let subtree_offset = subtree_idx * subtree_digests_len;
             let idx_in_subtree =
                 subtree_digests_len - subtree_leaves_len + leaf_index % subtree_leaves_len;
-
             if subtree_leaves_len == 2 {
                 digests_buf[subtree_offset + idx_in_subtree]
                     .write(H::hash_or_noop(leaf_copy.as_slice()));
@@ -899,26 +671,137 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
                 let idx = subtree_offset + idx_in_subtree;
                 digests_buf[idx].write(H::hash_or_noop(leaf_copy.as_slice()));
                 let mut child_idx: i64 = idx_in_subtree as i64;
-                let mut parent_idx: i64 = (child_idx - 1) / 2;
+                let mut parent_idx: i64 = child_idx / 2 - 1;
                 while child_idx > 1 {
                     unsafe {
-                        let mut left_digest = digests_buf[child_idx as usize].assume_init();
-                        let mut right_digest = digests_buf[child_idx as usize + 1].assume_init();
-                        if idx_in_subtree & 1 == 1 {
-                            left_digest = digests_buf[child_idx as usize - 1].assume_init();
-                            right_digest = digests_buf[child_idx as usize].assume_init();
+                        let mut left_idx = subtree_offset + child_idx as usize;
+                        let mut right_idx = subtree_offset + child_idx as usize + 1;
+                        if child_idx & 1 == 1 {
+                            left_idx = subtree_offset + child_idx as usize - 1;
+                            right_idx = subtree_offset + child_idx as usize;
                         }
-                        digests_buf[parent_idx as usize]
+                        let left_digest = digests_buf[left_idx].assume_init();
+                        let right_digest = digests_buf[right_idx].assume_init();
+                        digests_buf[subtree_offset + parent_idx as usize]
                             .write(H::two_to_one(left_digest, right_digest));
                     }
                     child_idx = parent_idx;
-                    parent_idx = (child_idx - 1) / 2;
+                    parent_idx = child_idx / 2 - 1;
                 }
             }
             unsafe {
                 let left_digest = digests_buf[subtree_offset].assume_init();
                 let right_digest = digests_buf[subtree_offset + 1].assume_init();
                 cap_buf[subtree_idx].write(H::two_to_one(left_digest, right_digest));
+            }
+        }
+    }
+
+    pub fn change_leaves_in_range_and_update(
+        &mut self,
+        new_leaves: Vec<Vec<F>>,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        assert_eq!(new_leaves.len(), end_index - start_index);
+        assert_eq!(new_leaves[0].len(), self.leaf_size);
+
+        let tree_leaves_count = self.leaves.len() / self.leaf_size;
+        assert!(start_index < end_index);
+        assert!(end_index < tree_leaves_count);
+
+        let cap_height = log2_strict(self.cap.len());
+        let mut leaves = self.leaves.clone();
+
+        leaves[start_index * self.leaf_size..end_index * self.leaf_size]
+            .chunks_exact_mut(self.leaf_size)
+            .zip(new_leaves.clone())
+            .for_each(|(x, y)| {
+                for j in 0..self.leaf_size {
+                    x[j] = y[j];
+                }
+            });
+
+        let digests_len = self.digests.len();
+        let cap_len = self.cap.0.len();
+        let digests_buf = capacity_up_to_mut(&mut self.digests, digests_len);
+        let cap_buf = capacity_up_to_mut(&mut self.cap.0, cap_len);
+        self.leaves = leaves;
+        if digests_buf.is_empty() {
+            cap_buf[start_index..end_index]
+                .par_iter_mut()
+                .zip(new_leaves)
+                .for_each(|(cap, leaf)| {
+                    cap.write(H::hash_or_noop(leaf.as_slice()));
+                });
+        } else {
+            let subtree_leaves_len = tree_leaves_count >> cap_height;
+            let subtree_digests_len = digests_buf.len() >> cap_height;
+
+            let mut positions: Vec<usize> = (start_index..end_index)
+                .map(|idx| {
+                    let subtree_idx = idx / subtree_leaves_len;
+                    let subtree_offset = subtree_idx * subtree_digests_len;
+                    let idx_in_subtree =
+                        subtree_digests_len - subtree_leaves_len + idx % subtree_leaves_len;
+                    subtree_offset + idx_in_subtree
+                })
+                .collect();
+
+            // TODO change to parallel loop
+            for i in 0..positions.len() {
+                digests_buf[positions[i]].write(H::hash_or_noop(new_leaves[i].as_slice()));
+            }
+
+            if subtree_digests_len > 2 {
+                let rounds = log2_strict(tree_leaves_count) - cap_height - 1;
+                for _ in 0..rounds {
+                    let mut parent_indexes: HashSet<usize> = HashSet::new();
+                    let parents: Vec<usize> = positions
+                        .par_iter()
+                        .map(|pos| {
+                            let subtree_offset = pos / subtree_digests_len;
+                            let idx_in_subtree = pos % subtree_digests_len;
+                            let mut parent_idx = 0;
+                            if idx_in_subtree > 1 {
+                                parent_idx = idx_in_subtree / 2 - 1;
+                            }
+                            subtree_offset * subtree_digests_len + parent_idx
+                        })
+                        .collect();
+                    for p in parents {
+                        parent_indexes.insert(p);
+                    }
+                    positions = parent_indexes.into_iter().collect();
+
+                    // TODO change to parallel loop
+                    for i in 0..positions.len() {
+                        let subtree_offset = positions[i] / subtree_digests_len;
+                        let idx_in_subtree = positions[i] % subtree_digests_len;
+                        let digest_idx =
+                            subtree_offset * subtree_digests_len + 2 * (idx_in_subtree + 1);
+                        unsafe {
+                            let left_digest = digests_buf[digest_idx].assume_init();
+                            let right_digest = digests_buf[digest_idx + 1].assume_init();
+                            digests_buf[positions[i]]
+                                .write(H::two_to_one(left_digest, right_digest));
+                        }
+                    }
+                }
+            }
+
+            let mut cap_indexes: HashSet<usize> = HashSet::new();
+            for idx in start_index..end_index {
+                cap_indexes.insert(idx / subtree_leaves_len);
+            }
+
+            unsafe {
+                for idx in cap_indexes {
+                    let digest_idx = idx * subtree_digests_len;
+                    let left_digest = digests_buf[digest_idx].assume_init();
+                    let right_digest = digests_buf[digest_idx + 1].assume_init();
+                    cap_buf[idx].write(H::two_to_one(left_digest, right_digest));
+                }
             }
         }
     }
@@ -1038,6 +921,175 @@ mod tests {
             });
     }
 
+    fn verify_change_leaf_and_update_range_one_by_one(
+        leaves_count: usize,
+        leaf_size: usize,
+        cap_height: usize,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        use plonky2_field::types::Field;
+
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+
+        let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
+        let leaves2_1d: Vec<F> = leaves1_1d.clone();
+
+        let mut tree2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves2_1d, leaf_size, cap_height,
+        );
+
+        // v1
+        let now = Instant::now();
+        for i in start_index..end_index {
+            for j in 0..leaf_size {
+                leaves1_1d[i * leaf_size + j] = vals[i - start_index][j];
+            }
+        }
+        let tree1 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves1_1d, leaf_size, cap_height,
+        );
+        println!("Time V1: {} ms", now.elapsed().as_millis());
+
+        // v2
+        let now = Instant::now();
+        for idx in start_index..end_index {
+            let mut leaf: Vec<F> = vec![F::from_canonical_u64(0); leaf_size];
+            for j in 0..leaf_size {
+                leaf[j] = vals[idx - start_index][j];
+            }
+            tree2.change_leaf_and_update(leaf, idx);
+        }
+        println!("Time V2: {} ms", now.elapsed().as_millis());
+
+        // compare leaves
+        let t2leaves = tree2.get_leaves_1d();
+        tree1
+            .get_leaves_1d()
+            .chunks_exact(leaf_size)
+            .enumerate()
+            .for_each(|(i, x)| {
+                let mut ok = true;
+                for j in 0..leaf_size {
+                    if x[j] != t2leaves[i * leaf_size + j] {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    println!("Leaves different at index {:?}", i);
+                }
+                assert!(ok);
+            });
+
+        // compare trees
+        tree1.digests.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.digests[i];
+            if x != y {
+                println!("Digests different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+        tree1.cap.0.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.cap.0[i];
+            if x != y {
+                println!("Cap different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+    }
+
+    fn verify_change_leaf_and_update_range(
+        leaves_count: usize,
+        leaf_size: usize,
+        cap_height: usize,
+        start_index: usize,
+        end_index: usize,
+    ) {
+        // use plonky2_field::types::Field;
+
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+
+        let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
+        let leaves2_1d: Vec<F> = leaves1_1d.clone();
+
+        let mut tree2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves2_1d, leaf_size, cap_height,
+        );
+
+        // v1
+        let now = Instant::now();
+        for i in start_index..end_index {
+            for j in 0..leaf_size {
+                leaves1_1d[i * leaf_size + j] = vals[i - start_index][j];
+            }
+        }
+        let tree1 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            leaves1_1d, leaf_size, cap_height,
+        );
+        println!("Time V1: {} ms", now.elapsed().as_millis());
+
+        // v2
+        let now = Instant::now();
+        /*
+        for idx in start_index..end_index {
+            let mut leaf: Vec<F> = vec![F::from_canonical_u64(0); leaf_size];
+            for j in 0..leaf_size {
+                leaf[j] = vals[idx - start_index][j];
+            }
+            tree2.change_leaf_and_update(leaf, idx);
+        }
+        */
+        tree2.change_leaves_in_range_and_update(vals, start_index, end_index);
+        println!("Time V2: {} ms", now.elapsed().as_millis());
+
+        // compare leaves
+        let t2leaves = tree2.get_leaves_1d();
+        tree1
+            .get_leaves_1d()
+            .chunks_exact(leaf_size)
+            .enumerate()
+            .for_each(|(i, x)| {
+                let mut ok = true;
+                for j in 0..leaf_size {
+                    if x[j] != t2leaves[i * leaf_size + j] {
+                        ok = false;
+                        break;
+                    }
+                }
+                if !ok {
+                    println!("Leaves different at index {:?}", i);
+                }
+                assert!(ok);
+            });
+
+        // compare trees
+        tree1.digests.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.digests[i];
+            if x != y {
+                println!("Digests different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+        tree1.cap.0.into_iter().enumerate().for_each(|(i, x)| {
+            let y = tree2.cap.0[i];
+            if x != y {
+                println!("Cap different at index {:?}", i);
+            }
+            assert_eq!(x, y);
+        });
+    }
+
     #[test]
     #[should_panic]
     fn test_cap_height_too_big() {
@@ -1080,6 +1132,24 @@ mod tests {
 
         // big tree
         verify_change_leaf_and_update(12, 3);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_change_leaf_and_update_range() -> Result<()> {
+        for h in 0..11 {
+            println!(
+                "Run verify_change_leaf_and_update_range_one_by_one() for height {:?}",
+                h
+            );
+            verify_change_leaf_and_update_range_one_by_one(1024, 68, h, 32, 48);
+            println!(
+                "Run verify_change_leaf_and_update_range() for height {:?}",
+                h
+            );
+            verify_change_leaf_and_update_range(1024, 68, h, 32, 48);
+        }
 
         Ok(())
     }

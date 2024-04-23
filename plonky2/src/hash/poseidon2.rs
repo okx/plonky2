@@ -217,7 +217,7 @@ extern crate alloc;
 // [ 1 3 5 7 ]
 // [ 1 1 4 6 ].
 // The permutation calculation is based on Appendix B from the Poseidon2 paper.
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone, Default, Debug)]
 pub struct Poseidon2MEMatrix;
 
 // Multiply a 4-element vector x by M_4, in place.

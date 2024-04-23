@@ -1,10 +1,10 @@
-#[cfg(feature = "timing")]
-use std::time::{Duration, Instant};
-
 use log::Level;
+#[cfg(feature = "timing")]
+use web_time::{Duration, Instant};
 
 /// The hierarchy of scopes, and the time consumed by each one. Useful for profiling.
 #[cfg(feature = "timing")]
+#[derive(Debug)]
 pub struct TimingTree {
     /// The name of this scope.
     name: String,
@@ -19,6 +19,7 @@ pub struct TimingTree {
 }
 
 #[cfg(not(feature = "timing"))]
+#[derive(Debug)]
 pub struct TimingTree(Level);
 
 #[cfg(feature = "timing")]
@@ -54,7 +55,7 @@ impl TimingTree {
 
     /// Whether this scope is still in scope.
     #[cfg(feature = "timing")]
-    fn is_open(&self) -> bool {
+    const fn is_open(&self) -> bool {
         self.exit_time.is_none()
     }
 
@@ -151,7 +152,7 @@ impl TimingTree {
 
     #[cfg(not(feature = "timing"))]
     pub fn print(&self) {
-        log!(
+        log::log!(
             self.0,
             "TimingTree is not supported without the 'timing' feature enabled"
         );
