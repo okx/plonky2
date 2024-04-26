@@ -11,10 +11,11 @@ use crate::field::goldilocks_field::GoldilocksField;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
-use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
+#[cfg(not(target_feature = "avx2"))]
+use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
 #[cfg(target_feature = "avx2")]
 use crate::hash::arch::x86_64::poseidon_bn128_avx2::permute_bn128_avx;
 
@@ -60,6 +61,7 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
     }
 
     /*
+    // Go Wrapper - 33% slower than Rust version below
     fn permute(&mut self) {
         assert_eq!(SPONGE_WIDTH, 12);
         // println!("start permute............");
@@ -163,9 +165,12 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
                 self.state[11].to_canonical_u64(),
         ];
 
+        #[cfg(not(target_feature = "avx2"))]
         let p: PoseidonBN128NativePermutation<F> = Default::default();
+        #[cfg(not(target_feature = "avx2"))]
         let out = p.permute_fn(su64);
-        // let out = permute_bn128_avx(su64);
+        #[cfg(target_feature = "avx2")]
+        let out = permute_bn128_avx(su64);
 
         let permute_output = [
                 F::from_canonical_u64(out[0]),

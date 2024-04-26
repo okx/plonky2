@@ -1,14 +1,14 @@
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
 
-const RSquare: [u64; 4] = [
+pub const RSQUARE: [u64; 4] = [
     1997599621687373223u64,
     6052339484930628067u64,
     10108755138030829701u64,
     150537098327114917u64,
 ];
 
-const C: [[u64; 4]; 100] = [
+pub const C: [[u64; 4]; 100] = [
     [
         0x878a9569334498e4,
         0x4641e4a29d08274f,
@@ -611,7 +611,7 @@ const C: [[u64; 4]; 100] = [
     ],
 ];
 
-const M: [[[u64; 4]; 5]; 5] = [
+pub const M: [[[u64; 4]; 5]; 5] = [
     [
         [
             0x77464b55cd95efca,
@@ -774,7 +774,7 @@ const M: [[[u64; 4]; 5]; 5] = [
     ],
 ];
 
-const P: [[[u64; 4]; 5]; 5] = [
+pub const P: [[[u64; 4]; 5]; 5] = [
     [
         [
             0x77464b55cd95efca,
@@ -937,7 +937,7 @@ const P: [[[u64; 4]; 5]; 5] = [
     ],
 ];
 
-const S: [[u64; 4]; 540] = [
+pub const S: [[u64; 4]; 540] = [
     [
         0x77464b55cd95efca,
         0x68ba7a74ae0e5894,
@@ -4182,7 +4182,7 @@ const S: [[u64; 4]; 540] = [
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct ElementBN128 {
-    z: [u64; 4],
+    pub z: [u64; 4],
 }
 
 impl ElementBN128 {
@@ -4225,18 +4225,20 @@ impl ElementBN128 {
     fn sub64(self, a: u64, b: u64, bin: u64) -> (u64, u64) {
         debug_assert!(bin == 0 || bin == 1);
 
-        let mut r;
+        let mut r: u64;
         let mut bout;
 
         if a < b {
-            r = 0xFFFFFFFFFFFFFFFF - b + a + 1;
+            // r = 0xFFFFFFFFFFFFFFFF - b + a + 1;
+            r = a.wrapping_sub(b);
             bout = 1;
         } else {
             r = a - b;
             bout = 0;
         }
         if r < bin {
-            r = 0xFFFFFFFFFFFFFFFF - bin + r + 1;
+            // here we can only have r = 0, bin = 1 => r becomes -1
+            r = 0xFFFFFFFFFFFFFFFF;
             bout = 1;
         } else {
             r -= bin;
@@ -4284,7 +4286,7 @@ impl ElementBN128 {
     }
 
     #[inline]
-    fn _mulGeneric(self, x: [u64; 4], y: [u64; 4]) -> [u64; 4] {
+    fn _mul_generic(self, x: [u64; 4], y: [u64; 4]) -> [u64; 4] {
         let mut z: [u64; 4] = [0u64; 4];
         let mut t: [u64; 4] = [0u64; 4];
         let mut c: [u64; 3] = [0u64; 3];
@@ -4358,7 +4360,7 @@ impl ElementBN128 {
     }
 
     #[inline]
-    fn _addGeneric(self, x: [u64; 4], y: [u64; 4]) -> [u64; 4] {
+    fn _add_generic(self, x: [u64; 4], y: [u64; 4]) -> [u64; 4] {
         let mut z: [u64; 4] = [0u64; 4];
         let mut carry;
 
@@ -4388,7 +4390,7 @@ impl ElementBN128 {
     }
 
     #[inline]
-    fn _fromMontGeneric(self, x: [u64; 4]) -> [u64; 4] {
+    fn _from_mont_generic(self, x: [u64; 4]) -> [u64; 4] {
         let mut z: [u64; 4] = x;
 
         // m = z[0]n'[0] mod W
@@ -4444,48 +4446,48 @@ impl ElementBN128 {
     }
 
     fn square(&mut self) {
-        self.z = self._mulGeneric(self.z, self.z);
+        self.z = self._mul_generic(self.z, self.z);
     }
 
     #[inline]
-    pub fn Exp5(&mut self) {
+    pub fn exp5(&mut self) {
         let x: [u64; 4] = self.z;
         self.square();
         self.square();
-        self.z = self._mulGeneric(self.z, x);
+        self.z = self._mul_generic(self.z, x);
     }
 
     #[inline]
-    pub fn Add(&mut self, x: ElementBN128, y: ElementBN128) {
-        self.z = self._addGeneric(x.z, y.z);
+    pub fn add(&mut self, x: ElementBN128, y: ElementBN128) {
+        self.z = self._add_generic(x.z, y.z);
     }
 
     #[inline]
-    pub fn Mul(&mut self, x: ElementBN128, y: ElementBN128) {
-        self.z = self._mulGeneric(x.z, y.z);
+    pub fn mul(&mut self, x: ElementBN128, y: ElementBN128) {
+        self.z = self._mul_generic(x.z, y.z);
     }
 
     #[inline]
-    pub fn ToMont(&mut self) {
-        self.z = self._mulGeneric(self.z, RSquare);
+    pub fn to_mont(&mut self) {
+        self.z = self._mul_generic(self.z, RSQUARE);
     }
 
     #[inline]
-    pub fn FromMont(&mut self) {
-        self.z = self._fromMontGeneric(self.z);
+    pub fn from_mont(&mut self) {
+        self.z = self._from_mont_generic(self.z);
     }
 
-    pub fn New(v: [u64; 4]) -> Self {
+    pub fn new(v: [u64; 4]) -> Self {
         Self { z: v }
     }
 
-    pub fn Zero() -> Self {
+    pub fn zero() -> Self {
         let v: [u64; 4] = [0; 4];
         Self { z: v }
     }
 
     #[inline]
-    pub fn SetZero(&mut self) {
+    pub fn set_zero(&mut self) {
         self.z[0] = 0;
         self.z[1] = 0;
         self.z[2] = 0;
@@ -4493,13 +4495,13 @@ impl ElementBN128 {
     }
 
     #[inline]
-    pub fn SetUint64(&mut self, v: u64) {
+    pub fn set_uint64(&mut self, v: u64) {
         self.z[0] = v;
         self.z[1] = 0;
         self.z[2] = 0;
         self.z[3] = 0;
 
-        self.z = self._mulGeneric(self.z, RSquare);
+        self.z = self._mul_generic(self.z, RSQUARE);
     }
 }
 
@@ -4511,106 +4513,95 @@ pub struct PoseidonBN128NativePermutation<F> {
 impl<F: RichField> PoseidonBN128NativePermutation<F> {
     #[inline]
     fn exp5state(self, state: &mut [ElementBN128; 5]) {
-        state[0].Exp5();
-        state[1].Exp5();
-        state[2].Exp5();
-        state[3].Exp5();
-        state[4].Exp5();
+        state[0].exp5();
+        state[1].exp5();
+        state[2].exp5();
+        state[3].exp5();
+        state[4].exp5();
     }
 
     #[inline]
     fn ark(self, state: &mut [ElementBN128; 5], c: [[u64; 4]; 100], it: usize) {
         for i in 0..5 {
-            let cc = ElementBN128::New(c[it + i]);
-            state[i].Add(state[i], cc);
+            let cc = ElementBN128::new(c[it + i]);
+            state[i].add(state[i], cc);
         }
     }
 
     #[inline]
     fn mix(self, state: &mut [ElementBN128; 5], m: [[[u64; 4]; 5]; 5]) {
-        let mut newState: [ElementBN128; 5] = [ElementBN128::Zero(); 5];
-        let mut mul = ElementBN128::Zero();
+        let mut new_state: [ElementBN128; 5] = [ElementBN128::zero(); 5];
+        let mut mul = ElementBN128::zero();
         for i in 0..5 {
-            newState[i].SetUint64(0);
+            new_state[i].set_uint64(0);
             for j in 0..5 {
-                let mm = ElementBN128::New(m[j][i]);
-                mul.Mul(mm, state[j]);
-                newState[i].Add(newState[i], mul);
+                let mm = ElementBN128::new(m[j][i]);
+                mul.mul(mm, state[j]);
+                new_state[i].add(new_state[i], mul);
             }
         }
         for i in 0..5 {
-            state[i] = newState[i];
+            state[i] = new_state[i];
         }
     }
 
-    /*
-    // TODO: remove
-    fn print_state(&self, state: &[ElementBN128; 5]) {
-        println!("{:?}", state[0]);
-        println!("{:?}", state[1]);
-        println!("{:?}", state[2]);
-        println!("{:?}", state[3]);
-        println!("{:?}", state[4]);
-        println!();
-    }
-    */
-
     pub fn permute_fn(&self, input: [u64; 12]) -> [u64; 12] {
-        let mut inp: [ElementBN128; 4] = [ElementBN128::Zero(); 4];
+        let mut inp: [ElementBN128; 4] = [ElementBN128::zero(); 4];
         for i in 0..4 {
             inp[i].z[0] = input[i * 3 + 2];
             inp[i].z[1] = input[i * 3 + 1];
             inp[i].z[2] = input[i * 3 + 0];
             inp[i].z[3] = 0;
-            inp[i].ToMont();
+            inp[i].to_mont();
         }
 
-        const t: usize = 5;
-        const nRoundsF: usize = 8;
-        const nRoundsP: usize = 60;
+        const CT: usize = 5;
+        const N_ROUNDS_F: usize = 8;
+        const N_ROUNDS_P: usize = 60;
 
-        let mut state: [ElementBN128; 5] = [ElementBN128::Zero(); 5];
+        let mut state: [ElementBN128; 5] = [ElementBN128::zero(); 5];
         state[1] = inp[0];
         state[2] = inp[1];
         state[3] = inp[2];
         state[4] = inp[3];
+
         self.ark(&mut state, C, 0);
 
-        for i in 0..(nRoundsF / 2 - 1) {
+        for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
-            self.ark(&mut state, C, (i + 1) * t);
+            self.ark(&mut state, C, (i + 1) * CT);
             self.mix(&mut state, M);
         }
 
         self.exp5state(&mut state);
-        self.ark(&mut state, C, (nRoundsF / 2) * t);
+        self.ark(&mut state, C, (N_ROUNDS_F / 2) * CT);
         self.mix(&mut state, P);
 
-        for i in 0..nRoundsP {
-            state[0].Exp5();
-            let cc = ElementBN128::New(C[(nRoundsF / 2 + 1) * t + i]);
-            state[0].Add(state[0], cc);
+        for i in 0..N_ROUNDS_P {
+            state[0].exp5();
+            let cc = ElementBN128::new(C[(N_ROUNDS_F / 2 + 1) * CT + i]);
+            state[0].add(state[0], cc);
 
-            let mut mul = ElementBN128::Zero();
-            let mut newState0 = ElementBN128::Zero();
-            for j in 0..t {
-                let ss = ElementBN128::New(S[(t * 2 - 1) * i + j]);
-                mul.Mul(ss, state[j]);
-                newState0.Add(newState0, mul);
+            let mut mul = ElementBN128::zero();
+            let mut new_state0 = ElementBN128::zero();
+            for j in 0..CT {
+                let ss = ElementBN128::new(S[(CT * 2 - 1) * i + j]);
+                mul.mul(ss, state[j]);
+                new_state0.add(new_state0, mul);
             }
 
-            for k in 1..t {
-                let ss = ElementBN128::New(S[(t * 2 - 1) * i + t + k - 1]);
-                mul.SetZero();
-                mul.Mul(state[0], ss);
-                state[k].Add(state[k], mul);
+            for k in 1..CT {
+                let ss = ElementBN128::new(S[(CT * 2 - 1) * i + CT + k - 1]);
+                mul.set_zero();
+                mul.mul(state[0], ss);
+                state[k].add(state[k], mul);
             }
-            state[0] = newState0;
+            state[0] = new_state0;
         }
 
-        for i in 0..(nRoundsF / 2 - 1) {
+        for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
-            self.ark(&mut state, C, (nRoundsF / 2 + 1) * t + nRoundsP + i * t);
+            self.ark(&mut state, C, (N_ROUNDS_F / 2 + 1) * CT + N_ROUNDS_P + i * CT);
             self.mix(&mut state, M);
         }
         self.exp5state(&mut state);
@@ -4618,17 +4609,18 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
 
         let mut out: [u64; 12] = [0; 12];
         for i in 0..4 {
-            let mut rE = state[i];
-            rE.FromMont();
-            out[i * 3] = rE.z[2];
-            out[i * 3 + 1] = rE.z[1];
-            out[i * 3 + 2] = rE.z[0];
+            let mut r_e = state[i];
+            r_e.from_mont();
+            out[i * 3] = r_e.z[2];
+            out[i * 3 + 1] = r_e.z[1];
+            out[i * 3 + 2] = r_e.z[0];
         }
         for i in 0..12 {
             if out[i] >= 0xFFFFFFFF00000001u64 {
                 out[i] = out[i] - 0xFFFFFFFF00000001u64;
             }
         }
+
         out
     }
 }
