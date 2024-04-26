@@ -242,15 +242,15 @@ where
     for i in 0..12 {
         v[i] = state[i].to_canonical_u64();
         v[i+12] = v[i];
-    }    
+    }
 
     let mut r0l = _mm256_set_epi64x(((v[0] & 0xFFFFFFFF) * MDS_MATRIX_DIAG[0]) as i64, 0, 0, 0);
-    let mut r1l = _mm256_set_epi64x(0, 0, 0, 0);;
+    let mut r1l = _mm256_set_epi64x(0, 0, 0, 0);
     let mut r2l = r1l;
     let mut r0h = _mm256_set_epi64x(((v[0] >> 32) * MDS_MATRIX_DIAG[0]) as i64, 0, 0, 0);
     let mut r1h = r1l;
     let mut r2h = r2l;
-    
+
     for i in 0..12 {
         let vv0 = _mm256_loadu_si256((&v[i+0..i+4]).as_ptr().cast::<__m256i>());
         let vv1 = _mm256_loadu_si256((&v[i+4..i+8]).as_ptr().cast::<__m256i>());
@@ -267,12 +267,12 @@ where
         r2l = _mm256_add_epi64(r2l, c2l);
         r0h = _mm256_add_epi64(r0h, c0h);
         r1h = _mm256_add_epi64(r1h, c1h);
-        r2h = _mm256_add_epi64(r2h, c2h);        
+        r2h = _mm256_add_epi64(r2h, c2h);
     }
     let r0 = reduce_avx_128_64(&r0h, &r0l);
     let r1 = reduce_avx_128_64(&r1h, &r1l);
     let r2 = reduce_avx_128_64(&r2h, &r2l);
-    
+
     _mm256_storeu_si256((&mut state[0..4]).as_mut_ptr().cast::<__m256i>(), r0);
     _mm256_storeu_si256((&mut state[4..8]).as_mut_ptr().cast::<__m256i>(), r1);
     _mm256_storeu_si256((&mut state[8..12]).as_mut_ptr().cast::<__m256i>(), r2);
