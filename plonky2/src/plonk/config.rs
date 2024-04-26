@@ -30,6 +30,7 @@ pub enum HasherType {
     Keccak = 1,
     PoseidonBN128 = 2,
     Poseidon2 = 3,
+    Monolith = 4,
 }
 
 pub trait GenericHashOut<F: RichField>:
@@ -101,7 +102,7 @@ pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
     ) -> Self::AlgebraicPermutation
     where
         F: RichField + Extendable<D>;
-    
+
      /// Circuit to calculate hash out for public inputs.
      fn public_inputs_hash<const D: usize>(
         inputs: Vec<Target>,

@@ -21,7 +21,7 @@ unsafe fn set_one() -> __m256i {
 }
 
 #[inline]
-unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
+pub unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
     /*
      * a and b are signed 4 x i64. Suppose a and b represent only one i64, then:
      * - (test 1): if a < 2^63 and b < 2^63 (this means a >= 0 and b >= 0) => sum does not overflow => cout = 0
@@ -48,7 +48,7 @@ unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
 
 // cin is carry in and must be 0 or 1
 #[inline]
-unsafe fn add64(a: &__m256i, b: &__m256i, cin: &__m256i) -> (__m256i, __m256i) {
+pub unsafe fn add64(a: &__m256i, b: &__m256i, cin: &__m256i) -> (__m256i, __m256i) {
     let (r1, c1) = add64_no_carry(a, b);
     let max = _mm256_set_epi64x(-1, -1, -1, -1);
     let m = _mm256_cmpeq_epi64(r1, max);

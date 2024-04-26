@@ -14,3 +14,5 @@ pub mod goldilocks_avx2;
 pub mod goldilocks_avx512;
 #[cfg(target_feature = "avx2")]
 pub mod poseidon_bn128_avx2;
+#[cfg(target_feature = "avx2")]
+pub mod monolith_avx2;
