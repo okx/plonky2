@@ -80,6 +80,19 @@ pub fn reduce_avx_128_64(c_h: &__m256i, c_l: &__m256i) -> __m256i {
     }
 }
 
+// Here we suppose c_h < 2^32
+#[inline(always)]
+pub fn reduce_avx_96_64(c_h: &__m256i, c_l: &__m256i) -> __m256i {
+    unsafe {
+        let msb = _mm256_set_epi64x(MSB_1, MSB_1, MSB_1, MSB_1);
+        let p_n = _mm256_set_epi64x(P_N_1, P_N_1, P_N_1, P_N_1);
+        let c_ls = _mm256_xor_si256(*c_l, msb);
+        let c2 = _mm256_mul_epu32(*c_h, p_n);
+        let c_s = add_avx_s_b_small(&c_ls, &c2);
+        _mm256_xor_si256(c_s, msb)
+    }
+}
+
 /*
 #[inline(always)]
 pub fn mult_avx_128_v2(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
