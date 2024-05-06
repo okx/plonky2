@@ -172,11 +172,6 @@ pub const MONOLITH_MAT_12: [[u64; SPONGE_WIDTH]; SPONGE_WIDTH] = [
 ];
 
 impl Monolith for GoldilocksField {
-    #[cfg(feature = "default-sponge-params")]
-    fn concrete_u128(state_u128: &mut [u128; SPONGE_WIDTH], round_constants: &[u64; SPONGE_WIDTH]) {
-        mds_multiply_u128(state_u128, round_constants)
-    }
-
     const ROUND_CONSTANTS: [[u64; SPONGE_WIDTH]; N_ROUNDS + 1] = MONOLITH_ROUND_CONSTANTS;
 
     const MAT_12: [[u64; SPONGE_WIDTH]; SPONGE_WIDTH] = MONOLITH_MAT_12;
@@ -245,6 +240,7 @@ mod tests {
         circuit_config: CircuitConfig,
     }
 
+    // TODO - this fails when config is Monolith
     #[rstest]
     #[serial]
     fn test_circuit_with_hash_functions<
@@ -279,6 +275,7 @@ mod tests {
         circuit_config: CircuitConfig,
     }
 
+    // TODO - this fails when inner_conf is Monolith
     #[rstest]
     #[serial]
     fn test_recursive_circuit_with_hash_functions<
@@ -324,6 +321,7 @@ mod tests {
         rec_cd.verify(rec_proof).unwrap();
     }
 
+    // TODO - this fails
     #[test]
     fn test_monolith_hash() {
         const D: usize = 2;
