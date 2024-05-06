@@ -81,5 +81,5 @@ fn main() {
 
     bindings
         .write_to_file(out_path.join("bindings.rs"))
-        .expect("Couldn't write bindings!");    
+        .expect("Couldn't write bindings!");
 }

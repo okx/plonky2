@@ -102,7 +102,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingGate<D
             .collect()
     }
 
-
     fn export_circom_verification_code(&self) -> String {
         let mut template_str = format!(
             "template Reducing$NUM_COEFFS() {{
@@ -175,7 +174,6 @@ function r_wires_accs_start(i, num_coeffs) {{
 
         template_str
     }
-
 
     fn eval_unfiltered_base_one(
         &self,
@@ -257,7 +255,7 @@ function r_wires_accs_start(i, num_coeffs) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingGate<D>,

@@ -4,7 +4,7 @@ use alloc::string::String;
 use crate::iop::target::Target;
 
 /// A named copy constraint.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CopyConstraint {
     pub pair: (Target, Target),
     pub name: String,

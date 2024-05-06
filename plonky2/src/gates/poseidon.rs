@@ -717,7 +717,7 @@ function MDS_MATRIX_DIAG(i) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PoseidonGenerator<F: RichField + Extendable<D> + Poseidon, const D: usize> {
     row: usize,
     _phantom: PhantomData<F>,

@@ -82,7 +82,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let vanishing_polys_zeta = with_context!(
             self,
             "evaluate the vanishing polynomial at our challenge point, zeta.",
-            eval_vanishing_poly_circuit::<F,C, D>(
+            eval_vanishing_poly_circuit::<F, C, D>(
                 self,
                 inner_common_data,
                 challenges.plonk_zeta,
@@ -149,7 +149,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    fn add_virtual_proof<InnerC: GenericConfig<D, F = F>>(&mut self, common_data: &CommonCircuitData<F, D>) -> ProofTarget<D> {
+    fn add_virtual_proof<InnerC: GenericConfig<D, F = F>>(
+        &mut self,
+        common_data: &CommonCircuitData<F, D>,
+    ) -> ProofTarget<D> {
         let config = &common_data.config;
         let fri_params = &common_data.fri_params;
         let cap_height = fri_params.config.cap_height;
@@ -159,7 +162,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             common_data.num_preprocessed_polys(),
             config.num_wires + salt,
             // NOTE: v2 change
-            common_data.num_zs_partial_products_polys()+ salt, // + common_data.num_all_lookup_polys() ,
+            common_data.num_zs_partial_products_polys() + salt, // + common_data.num_all_lookup_polys() ,
         ];
 
         if common_data.num_quotient_polys() > 0 {
@@ -175,7 +178,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         }
     }
 
-    fn add_opening_set<InnerC: GenericConfig<D, F = F>>(&mut self, common_data: &CommonCircuitData<F, D>) -> OpeningSetTarget<D> {
+    fn add_opening_set<InnerC: GenericConfig<D, F = F>>(
+        &mut self,
+        common_data: &CommonCircuitData<F, D>,
+    ) -> OpeningSetTarget<D> {
         let config = &common_data.config;
         let num_challenges = config.num_challenges;
         let total_partial_products = num_challenges * common_data.num_partial_products;

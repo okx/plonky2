@@ -133,7 +133,7 @@ pub trait Gate<F: RichField + Extendable<D>, const D: usize>: 'static + Send + S
         builder: &mut CircuitBuilder<F, D>,
         vars: EvaluationTargets<D>,
     ) -> Vec<ExtensionTarget<D>>;
-    
+
     fn eval_filtered(
         &self,
         mut vars: EvaluationVars<F, D>,
@@ -322,7 +322,12 @@ pub struct PrefixedGate<F: RichField + Extendable<D>, const D: usize> {
 }
 
 /// A gate's filter designed so that it is non-zero if `s = row`.
-pub fn compute_filter<K: Field>(row: usize, group_range: Range<usize>, s: K, many_selector: bool) -> K {
+pub fn compute_filter<K: Field>(
+    row: usize,
+    group_range: Range<usize>,
+    s: K,
+    many_selector: bool,
+) -> K {
     debug_assert!(group_range.contains(&row));
     group_range
         .filter(|&i| i != row)

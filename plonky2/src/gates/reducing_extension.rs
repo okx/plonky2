@@ -81,7 +81,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingExtens
         Ok(Self::new(num_coeffs))
     }
 
-
     fn export_circom_verification_code(&self) -> String {
         let mut template_str = format!(
             "template ReducingExtension$NUM_COEFFS() {{
@@ -254,7 +253,7 @@ function re_wires_accs_start(i, num_coeffs) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingExtensionGate<D>,

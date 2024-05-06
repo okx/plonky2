@@ -335,10 +335,7 @@ pub trait Read {
         let cap_height = self.read_usize()?;
         let cap = self.read_merkle_cap::<F, H>(cap_height)?;
         Ok(MerkleTree::new_from_fields(
-            leaves_1d,
-            leaf_len,
-            digests,
-            cap,
+            leaves_1d, leaf_len, digests, cap,
         ))
     }
 
