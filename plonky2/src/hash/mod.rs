@@ -14,4 +14,4 @@ pub mod poseidon_bn128;
 mod poseidon_bn128_ops;
 pub mod poseidon_goldilocks;
 pub mod monolith;
-mod monolith_goldilocks;
+pub mod monolith_goldilocks;
