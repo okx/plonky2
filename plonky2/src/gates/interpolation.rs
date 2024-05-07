@@ -13,11 +13,13 @@ pub(crate) trait InterpolationGate<F: RichField + Extendable<D>, const D: usize>
 {
     fn new(subgroup_bits: usize) -> Self;
 
+    #[allow(dead_code)]
     fn id(&self) -> String {
         // Custom implementation to not have the entire lookup table
         format!("InterpolationGate",)
     }
 
+    #[allow(dead_code)]
     fn serialize(
         &self,
         _dst: &mut Vec<u8>,
@@ -26,6 +28,7 @@ pub(crate) trait InterpolationGate<F: RichField + Extendable<D>, const D: usize>
         todo!()
     }
 
+    #[allow(dead_code)]
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         todo!()
     }

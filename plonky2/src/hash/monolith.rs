@@ -444,11 +444,8 @@ pub(crate) mod test {
     use crate::field::types::{Field, Sample};
     use crate::gates::monolith::generate_config_for_monolith_gate;
     use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
-    use crate::hash::monolith::MonolithHash;
     use crate::hash::monolith_goldilocks::MonolithGoldilocksConfig;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::config::Hasher;
 
     pub(crate) fn check_test_vectors<F: Field>(
         test_vectors: Vec<([u64; SPONGE_WIDTH], [u64; SPONGE_WIDTH])>,

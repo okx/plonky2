@@ -241,6 +241,8 @@ where
 }
 
 trait P2Permutation<T: Clone>: Clone + Sync {
+
+    #[allow(dead_code)]
     fn permute(&self, mut input: T) -> T {
         self.permute_mut(&mut input);
         input
@@ -558,8 +560,6 @@ impl<F: RichField + Poseidon2> AlgebraicHasher<F> for Poseidon2Hash {
 
 #[cfg(test)]
 mod tests {
-    use alloc::vec::Vec;
-
     use plonky2_field::goldilocks_field::GoldilocksField;
     use plonky2_field::types::Field;
     use rand::Rng;
