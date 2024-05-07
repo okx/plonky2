@@ -7,8 +7,6 @@ use std::path::Path;
 use std::{env, fs};
 extern crate alloc;
 use alloc::alloc::{alloc, Layout};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 use plonky2_field::goldilocks_field::GoldilocksField;
 use plonky2_field::ops::Square;

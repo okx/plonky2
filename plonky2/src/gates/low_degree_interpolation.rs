@@ -1,5 +1,3 @@
-use alloc::string::String;
-use alloc::vec::Vec;
 use alloc::{format, vec};
 use core::marker::PhantomData;
 use core::ops::Range;
@@ -701,9 +699,10 @@ mod tests {
         let coeffs = PolynomialCoeffs::new(FF::rand_vec(1 << subgroup_bits));
         let eval_point = FF::rand();
         let gate = LowDegreeInterpolationGate::<F, D>::new(subgroup_bits);
+        let wires = get_wires(&gate, shift, coeffs, eval_point);
         let vars = EvaluationVars {
             local_constants: &[],
-            local_wires: &get_wires(&gate, shift, coeffs, eval_point),
+            local_wires: wires.as_slice(),
             public_inputs_hash: &HashOut::rand(),
         };
 
