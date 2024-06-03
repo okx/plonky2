@@ -345,7 +345,6 @@ where
 }
 
 trait P2Permutation<T: Clone>: Clone + Sync {
-
     #[allow(dead_code)]
     fn permute(&self, mut input: T) -> T {
         self.permute_mut(&mut input);

@@ -140,7 +140,8 @@ impl WirePartition {
         // is considered its own neighbor.
 
         // This new version is faster (does not use HashMap)
-        let mut neighbors: Vec<Vec<Wire>> = vec![vec![Wire {row: 0, column: 0}; num_routed_wires]; degree];
+        let mut neighbors: Vec<Vec<Wire>> =
+            vec![vec![Wire { row: 0, column: 0 }; num_routed_wires]; degree];
         for subset in &self.partition {
             for n in 0..subset.len() {
                 let r = subset[n].row;
