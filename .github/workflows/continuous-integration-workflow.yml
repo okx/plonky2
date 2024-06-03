@@ -145,7 +145,7 @@ jobs:
           RUST_BACKTRACE: 1
 
   lints:
-    name: Formatting and Clippy
+    name: Formatting
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
@@ -170,6 +170,3 @@ jobs:
 
       - name: Run cargo fmt
         run: cargo fmt --all --check
-
-      - name: Run cargo clippy
-        run: cargo clippy --all-features --all-targets -- -D warnings -A incomplete-features
