@@ -1,6 +1,7 @@
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
 
+#[allow(dead_code)]
 pub const RSQUARE: [u64; 4] = [
     1997599621687373223u64,
     6052339484930628067u64,
@@ -4467,11 +4468,13 @@ impl ElementBN128 {
         self.z = self._mul_generic(x.z, y.z);
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub fn to_mont(&mut self) {
         self.z = self._mul_generic(self.z, RSQUARE);
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub fn from_mont(&mut self) {
         self.z = self._from_mont_generic(self.z);
@@ -4494,6 +4497,7 @@ impl ElementBN128 {
         self.z[3] = 0;
     }
 
+    #[allow(dead_code)]
     #[inline]
     pub fn set_uint64(&mut self, v: u64) {
         self.z[0] = v;

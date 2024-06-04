@@ -1,4 +1,3 @@
-#![cfg_attr(feature = "nightly", feature(stdsimd))]
 use core::arch::x86_64::*;
 
 use crate::hash::poseidon_bn128_ops::{ElementBN128, C, M, P, S};

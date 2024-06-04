@@ -11,25 +11,10 @@ use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{Hasher, HasherType};
 
-// change these values and disable `default-sponge-params` feature if it is needed to change the
-// default sponge parameters
-#[cfg(not(feature = "default-sponge-params"))]
 const CUSTOM_SPONGE_RATE: usize = 8;
-#[cfg(not(feature = "default-sponge-params"))]
 const CUSTOM_SPONGE_CAPACITY: usize = 4;
 
-/// This constant describes the number of elements in the outer part of the cryptographic sponge
-/// function.
-#[cfg(feature = "default-sponge-params")]
-pub const SPONGE_RATE: usize = 8;
-/// This constant describes the number of elements in the inner part of the cryptographic sponge
-/// function.
-#[cfg(feature = "default-sponge-params")]
-pub const SPONGE_CAPACITY: usize = 4;
-
-#[cfg(not(feature = "default-sponge-params"))]
 pub const SPONGE_RATE: usize = CUSTOM_SPONGE_RATE;
-#[cfg(not(feature = "default-sponge-params"))]
 pub const SPONGE_CAPACITY: usize = CUSTOM_SPONGE_CAPACITY;
 
 /// This is the number of elements which constitute the state of the internal permutation and the
