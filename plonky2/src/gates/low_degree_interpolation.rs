@@ -702,7 +702,7 @@ mod tests {
         let wires = get_wires(&gate, shift, coeffs, eval_point);
         let vars = EvaluationVars {
             local_constants: &[],
-            local_wires: &wires.as_slice(),
+            local_wires: wires.as_slice(),
             public_inputs_hash: &HashOut::rand(),
         };
 
