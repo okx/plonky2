@@ -129,6 +129,13 @@ pub trait CircuitBuilderNonNative<F: RichField + Extendable<D>, const D: usize> 
         x: &NonNativeTarget<FF>,
         b: BoolTarget,
     ) -> NonNativeTarget<FF>;
+
+    /// Assert a >= b
+    fn assert_greater_equal_nonnative<FF: PrimeField>(
+        &mut self,
+        a: &NonNativeTarget<FF>,
+        b: &NonNativeTarget<FF>,
+    );
 }
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderNonNative<F, D>
@@ -428,6 +435,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderNonNative<F, D>
         let x_if_false = self.mul_nonnative_by_bool(x, not_b);
 
         self.add_nonnative(&x_if_true, &x_if_false)
+    }
+
+    /// Assert a >= b
+    fn assert_greater_equal_nonnative<FF: PrimeField>(
+        &mut self,
+        a: &NonNativeTarget<FF>,
+        b: &NonNativeTarget<FF>,
+    ) {
+        let a_int = self.nonnative_to_canonical_biguint(&a);
+        let b_int = self.nonnative_to_canonical_biguint(&b);
+        // b <= a
+        let is_a_bigger_equal = self.cmp_biguint(&b_int, &a_int);
+        self.assert_one(is_a_bigger_equal.target);
     }
 }
 
@@ -922,6 +942,28 @@ mod tests {
 
         pw.set_nonnative_target(x, x_ff);
         pw.set_nonnative_target(y, y_ff);
+        let data = builder.build::<C>();
+        let proof = data.prove(pw).unwrap();
+        data.verify(proof)
+    }
+
+    #[test]
+    fn test_assert_greater_nonnative() -> Result<()> {
+        type FF = Secp256K1Base;
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let config = CircuitConfig::standard_ecc_config();
+        let pw = PartialWitness::new();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+
+        let a = builder.constant_nonnative(FF::from_canonical_u64(100));
+        let b = builder.constant_nonnative(FF::from_canonical_u64(99));
+        let c = builder.constant_nonnative(FF::from_canonical_u64(100));
+        builder.assert_greater_equal_nonnative(&a, &b);
+        builder.assert_greater_equal_nonnative(&a, &c);
+
         let data = builder.build::<C>();
         let proof = data.prove(pw).unwrap();
         data.verify(proof)

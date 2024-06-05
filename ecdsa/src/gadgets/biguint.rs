@@ -46,6 +46,7 @@ pub trait CircuitBuilderBiguint<F: RichField + Extendable<D>, const D: usize> {
     fn constant_biguint(&mut self, value: &BigUint) -> BigUintTarget;
 
     fn zero_biguint(&mut self) -> BigUintTarget;
+    fn is_zero_biguint(&mut self, value: &BigUintTarget) -> BoolTarget;
 
     fn connect_biguint(&mut self, lhs: &BigUintTarget, rhs: &BigUintTarget);
 
@@ -55,6 +56,7 @@ pub trait CircuitBuilderBiguint<F: RichField + Extendable<D>, const D: usize> {
         b: &BigUintTarget,
     ) -> (BigUintTarget, BigUintTarget);
 
+    /// Return true if a <= b
     fn cmp_biguint(&mut self, a: &BigUintTarget, b: &BigUintTarget) -> BoolTarget;
 
     fn add_virtual_biguint_target(&mut self, num_limbs: usize) -> BigUintTarget;
@@ -100,6 +102,19 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderBiguint<F, D>
 
     fn zero_biguint(&mut self) -> BigUintTarget {
         self.constant_biguint(&BigUint::zero())
+    }
+
+    fn is_zero_biguint(&mut self, value: &BigUintTarget) -> BoolTarget {
+        let targets: Vec<Target> = value.limbs.iter().map(|&l| l.0).collect();
+        let zero = self.zero();
+        // Check if all limbs are equal to zero
+        targets.iter().fold(
+            self._true(),
+            |is_all_eq: BoolTarget, x| {
+                let is_eq = self.is_equal(*x, zero);
+                self.and(is_all_eq, is_eq)
+            },
+        )
     }
 
     fn connect_biguint(&mut self, lhs: &BigUintTarget, rhs: &BigUintTarget) {
@@ -506,6 +521,37 @@ mod tests {
 
         builder.connect_biguint(&div, &expected_div);
         builder.connect_biguint(&rem, &expected_rem);
+
+        let data = builder.build::<C>();
+        let proof = data.prove(pw).unwrap();
+        data.verify(proof)
+    }
+
+    #[test]
+    fn test_is_zero_biguint() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let config = CircuitConfig::standard_recursion_config();
+        let pw = PartialWitness::new();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+
+        let zero = builder.zero_biguint();
+        let should_true = builder.is_zero_biguint(&zero);
+        builder.assert_one(should_true.target);
+
+        let one = builder.constant_biguint(&BigUint::from_u32(1).unwrap());
+        {
+            let should_false = builder.is_zero_biguint(&one);
+            builder.assert_zero(should_false.target);
+        }
+
+        let big = builder.constant_biguint(&BigUint::from_u128(1 << 100).unwrap());
+        {
+            let should_false = builder.is_zero_biguint(&big);
+            builder.assert_zero(should_false.target);
+        }
 
         let data = builder.build::<C>();
         let proof = data.prove(pw).unwrap();

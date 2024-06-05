@@ -1,5 +1,5 @@
 [workspace]
-members = ["field", "maybe_rayon", "plonky2", "starky", "util", "gen"]
+members = ["field", "maybe_rayon", "plonky2", "starky", "util", "gen", "u32", "ecdsa", "ecgfp5"]
 resolver = "2"
 
 [workspace.dependencies]
