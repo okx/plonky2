@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::ops::Range;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -33,23 +37,23 @@ impl<const D: usize> ReducingExtensionGate<D> {
         ((num_routed_wires - 3 * D) / D).min((num_wires - 2 * D) / (D * 2))
     }
 
-    pub const fn wires_output() -> Range<usize> {
+    pub(crate) const fn wires_output() -> Range<usize> {
         0..D
     }
-    pub const fn wires_alpha() -> Range<usize> {
+    pub(crate) const fn wires_alpha() -> Range<usize> {
         D..2 * D
     }
-    pub const fn wires_old_acc() -> Range<usize> {
+    pub(crate) const fn wires_old_acc() -> Range<usize> {
         2 * D..3 * D
     }
     const START_COEFFS: usize = 3 * D;
-    pub const fn wires_coeff(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_coeff(i: usize) -> Range<usize> {
         Self::START_COEFFS + i * D..Self::START_COEFFS + (i + 1) * D
     }
     const fn start_accs(&self) -> usize {
         Self::START_COEFFS + self.num_coeffs * D
     }
-    fn wires_accs(&self, i: usize) -> Range<usize> {
+    const fn wires_accs(&self, i: usize) -> Range<usize> {
         debug_assert!(i < self.num_coeffs);
         if i == self.num_coeffs - 1 {
             // The last accumulator is the output.
@@ -76,7 +80,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingExtens
         let num_coeffs = src.read_usize()?;
         Ok(Self::new(num_coeffs))
     }
-
 
     fn export_circom_verification_code(&self) -> String {
         let mut template_str = format!(
@@ -250,7 +253,7 @@ function re_wires_accs_start(i, num_coeffs) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingExtensionGate<D>,

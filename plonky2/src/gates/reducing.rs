@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::ops::Range;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -31,17 +35,17 @@ impl<const D: usize> ReducingGate<D> {
         (num_routed_wires - 3 * D).min((num_wires - 2 * D) / (D + 1))
     }
 
-    pub const fn wires_output() -> Range<usize> {
+    pub(crate) const fn wires_output() -> Range<usize> {
         0..D
     }
-    pub const fn wires_alpha() -> Range<usize> {
+    pub(crate) const fn wires_alpha() -> Range<usize> {
         D..2 * D
     }
-    pub const fn wires_old_acc() -> Range<usize> {
+    pub(crate) const fn wires_old_acc() -> Range<usize> {
         2 * D..3 * D
     }
     const START_COEFFS: usize = 3 * D;
-    pub const fn wires_coeffs(&self) -> Range<usize> {
+    pub(crate) const fn wires_coeffs(&self) -> Range<usize> {
         Self::START_COEFFS..Self::START_COEFFS + self.num_coeffs
     }
     const fn start_accs(&self) -> usize {
@@ -97,7 +101,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingGate<D
             .flat_map(|alg| alg.to_basefield_array())
             .collect()
     }
-
 
     fn export_circom_verification_code(&self) -> String {
         let mut template_str = format!(
@@ -171,7 +174,6 @@ function r_wires_accs_start(i, num_coeffs) {{
 
         template_str
     }
-
 
     fn eval_unfiltered_base_one(
         &self,
@@ -253,7 +255,7 @@ function r_wires_accs_start(i, num_coeffs) {{
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingGate<D>,

@@ -1,6 +1,9 @@
-use alloc::format;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 use core::ops::Range;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -37,13 +40,13 @@ impl<const D: usize> MulExtensionGate<D> {
         config.num_routed_wires / wires_per_op
     }
 
-    pub const fn wires_ith_multiplicand_0(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_ith_multiplicand_0(i: usize) -> Range<usize> {
         3 * D * i..3 * D * i + D
     }
-    pub const fn wires_ith_multiplicand_1(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_ith_multiplicand_1(i: usize) -> Range<usize> {
         3 * D * i + D..3 * D * i + 2 * D
     }
-    pub const fn wires_ith_output(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_ith_output(i: usize) -> Range<usize> {
         3 * D * i + 2 * D..3 * D * i + 3 * D
     }
 }
@@ -111,7 +114,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulExtensionGa
         template_str = template_str.replace("$NUM_OPS", &*self.num_ops.to_string());
         template_str
     }
-
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         let const_0 = vars.local_constants[0];

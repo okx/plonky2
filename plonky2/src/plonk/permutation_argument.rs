@@ -1,3 +1,4 @@
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 use hashbrown::HashMap;
@@ -137,6 +138,28 @@ impl WirePartition {
         // other words, find the next wire in the given wire's partition. If the given wire is last in
         // its partition, this will loop around. If the given wire has a partition all to itself, it
         // is considered its own neighbor.
+
+        // This new version is faster (does not use HashMap)
+        let mut neighbors: Vec<Vec<Wire>> =
+            vec![vec![Wire { row: 0, column: 0 }; num_routed_wires]; degree];
+        for subset in &self.partition {
+            for n in 0..subset.len() {
+                let r = subset[n].row;
+                let c = subset[n].column;
+                neighbors[r][c] = subset[(n + 1) % subset.len()];
+            }
+        }
+        let mut sigma = Vec::with_capacity(num_routed_wires * degree);
+        for column in 0..num_routed_wires {
+            for row in 0..degree {
+                let neighbor = neighbors[row][column];
+                sigma.push(neighbor.column * degree + neighbor.row);
+            }
+        }
+        sigma
+
+        // Old version: TODO - delete
+        /*
         let mut neighbors = HashMap::with_capacity(self.partition.len());
         for subset in &self.partition {
             for n in 0..subset.len() {
@@ -153,5 +176,6 @@ impl WirePartition {
             }
         }
         sigma
+        */
     }
 }

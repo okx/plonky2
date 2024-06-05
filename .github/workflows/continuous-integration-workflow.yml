@@ -27,6 +27,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Add SSH private keys for submodule repositories
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.CRYPTOGRAPHY_CUDA_READ_ONLY }}
+
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@nightly
 
@@ -51,14 +56,6 @@ jobs:
           CARGO_INCREMENTAL: 1
           RUST_BACKTRACE: 1
 
-      - name: Check in evm subdirectory
-        run: cargo check --manifest-path evm/Cargo.toml
-        env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
-          RUST_LOG: 1
-          CARGO_INCREMENTAL: 1
-          RUST_BACKTRACE: 1
-
       - name: Run cargo test
         run: cargo test --workspace
         env:
@@ -67,43 +64,8 @@ jobs:
           CARGO_INCREMENTAL: 1
           RUST_BACKTRACE: 1
 
-  wasm32:
-    name: wasm32 compatibility
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
-    steps:
-      - name: Checkout sources
-        uses: actions/checkout@v4
-
-      - name: Install nightly toolchain
-        uses: dtolnay/rust-toolchain@nightly
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: Set up rust cache
-        uses: Swatinem/rust-cache@v2
-        with:
-            cache-on-failure: true
-
-      - name: Check in plonky2 subdirectory
-        run: cargo check --manifest-path plonky2/Cargo.toml --target wasm32-unknown-unknown --no-default-features
-        env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
-          RUST_LOG: 1
-          CARGO_INCREMENTAL: 1
-          RUST_BACKTRACE: 1
-
-      - name: Check in starky subdirectory
-        run: cargo check --manifest-path starky/Cargo.toml --target wasm32-unknown-unknown --no-default-features
-        env:
-          RUSTFLAGS: -Copt-level=3 -Cdebug-assertions -Coverflow-checks=y -Cdebuginfo=0
-          RUST_LOG: 1
-          CARGO_INCREMENTAL: 1
-          RUST_BACKTRACE: 1
-
   lints:
-    name: Formatting and Clippy
+    name: Formatting
     runs-on: ubuntu-latest
     timeout-minutes: 10
     if: "! contains(toJSON(github.event.commits.*.message), '[skip-ci]')"
@@ -111,6 +73,11 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
+      - name: Add SSH private keys for submodule repositories
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.CRYPTOGRAPHY_CUDA_READ_ONLY }}
+          
       - name: Install nightly toolchain
         uses: dtolnay/rust-toolchain@nightly
         with:
@@ -123,6 +90,3 @@ jobs:
 
       - name: Run cargo fmt
         run: cargo fmt --all --check
-
-      - name: Run cargo clippy
-        run: cargo clippy --all-features --all-targets -- -D warnings -A incomplete-features

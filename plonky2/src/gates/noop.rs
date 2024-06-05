@@ -1,5 +1,5 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{string::String, vec::Vec};
 
 use crate::field::extension::Extendable;
 use crate::gates::gate::Gate;
@@ -12,6 +12,7 @@ use crate::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBaseBa
 use crate::util::serialization::{Buffer, IoResult};
 
 /// A gate which does nothing.
+#[derive(Debug)]
 pub struct NoopGate;
 
 impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for NoopGate {
@@ -38,7 +39,6 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for NoopGate {
     fn export_solidity_verification_code(&self) -> String {
         unimplemented!()
     }
-
 
     fn eval_unfiltered(&self, _vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
         Vec::new()

@@ -1,6 +1,5 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec, vec::Vec};
 use core::borrow::Borrow;
 
 use itertools::Itertools;
@@ -81,7 +80,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BaseSumGenerator<const B: usize> {
     row: usize,
     limbs: Vec<BoolTarget>,

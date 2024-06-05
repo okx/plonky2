@@ -1,6 +1,5 @@
-use alloc::string::String;
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec, vec::Vec};
 use core::ops::Range;
 
 use crate::field::extension::Extendable;
@@ -41,11 +40,11 @@ impl<const B: usize> BaseSumGate<B> {
         Self::new(num_limbs)
     }
 
-    pub const WIRE_SUM: usize = 0;
-    pub const START_LIMBS: usize = 1;
+    pub(crate) const WIRE_SUM: usize = 0;
+    pub(crate) const START_LIMBS: usize = 1;
 
     /// Returns the index of the `i`th limb wire.
-    pub const fn limbs(&self) -> Range<usize> {
+    pub(crate) const fn limbs(&self) -> Range<usize> {
         Self::START_LIMBS..Self::START_LIMBS + self.num_limbs
     }
 }
@@ -239,7 +238,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const B: usize> PackedEvaluab
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BaseSplitGenerator<const B: usize> {
     row: usize,
     num_limbs: usize,

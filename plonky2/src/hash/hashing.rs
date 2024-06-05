@@ -1,7 +1,8 @@
 //! Concrete instantiation of a hash function.
-
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::fmt::Debug;
+use std::iter::repeat;
 
 use crate::field::extension::Extendable;
 use crate::field::types::Field;
@@ -9,6 +10,10 @@ use crate::hash::hash_types::{HashOut, HashOutTarget, RichField, NUM_HASH_OUT_EL
 use crate::iop::target::Target;
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::AlgebraicHasher;
+
+pub(crate) const SPONGE_RATE: usize = 8;
+pub(crate) const SPONGE_CAPACITY: usize = 4;
+pub const SPONGE_WIDTH: usize = SPONGE_RATE + SPONGE_CAPACITY;
 
 impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     pub fn hash_or_noop<H: AlgebraicHasher<F>>(&mut self, inputs: Vec<Target>) -> HashOutTarget {
@@ -102,9 +107,10 @@ pub fn compress<F: Field, P: PlonkyPermutation<F>>(x: HashOut<F>, y: HashOut<F>)
     debug_assert_eq!(y.elements.len(), NUM_HASH_OUT_ELTS);
     debug_assert!(P::RATE >= NUM_HASH_OUT_ELTS);
 
-    let mut perm = P::new(core::iter::repeat(F::ZERO));
+    let mut perm = P::new(repeat(F::ZERO));
     perm.set_from_slice(&x.elements, 0);
     perm.set_from_slice(&y.elements, NUM_HASH_OUT_ELTS);
+    perm.set_from_iter(repeat(F::ZERO), 8);
 
     perm.permute();
 

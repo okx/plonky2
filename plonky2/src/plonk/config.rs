@@ -6,8 +6,8 @@
 //! the Poseidon hash function both internally and natively, and one
 //! mixing Poseidon internally and truncated Keccak externally.
 
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
 use serde::de::DeserializeOwned;
@@ -16,12 +16,21 @@ use serde::Serialize;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::goldilocks_field::GoldilocksField;
-use crate::hash::hash_types::{HashOut, RichField};
+use crate::hash::hash_types::{HashOut, HashOutTarget, RichField};
 use crate::hash::hashing::PlonkyPermutation;
 use crate::hash::keccak::KeccakHash;
 use crate::hash::poseidon::PoseidonHash;
+use crate::hash::poseidon2::Poseidon2Hash;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
+
+#[derive(PartialEq, Debug, Copy, Clone)]
+pub enum HasherType {
+    Poseidon = 0,
+    Keccak = 1,
+    PoseidonBN128 = 2,
+    Poseidon2 = 3,
+}
 
 pub trait GenericHashOut<F: RichField>:
     Copy + Clone + Debug + Eq + PartialEq + Send + Sync + Serialize + DeserializeOwned
@@ -34,6 +43,8 @@ pub trait GenericHashOut<F: RichField>:
 
 /// Trait for hash functions.
 pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
+    const HASHER_TYPE: HasherType;
+
     /// Size of `Hash` in bytes.
     const HASH_SIZE: usize;
 
@@ -46,6 +57,7 @@ pub trait Hasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
     /// Hash a message without any padding step. Note that this can enable length-extension attacks.
     /// However, it is still collision-resistant in cases where the input has a fixed length.
     fn hash_no_pad(input: &[F]) -> Self::Hash;
+    fn hash_public_inputs(input: &[F]) -> Self::Hash;
 
     /// Pad the message using the `pad10*1` rule, then hash it.
     fn hash_pad(input: &[F]) -> Self::Hash {
@@ -89,6 +101,14 @@ pub trait AlgebraicHasher<F: RichField>: Hasher<F, Hash = HashOut<F>> {
     ) -> Self::AlgebraicPermutation
     where
         F: RichField + Extendable<D>;
+
+    /// Circuit to calculate hash out for public inputs.
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>;
 }
 
 /// Generic configuration trait.
@@ -106,7 +126,7 @@ pub trait GenericConfig<const D: usize>:
 }
 
 /// Configuration using Poseidon over the Goldilocks field.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Serialize)]
 pub struct PoseidonGoldilocksConfig;
 impl GenericConfig<2> for PoseidonGoldilocksConfig {
     type F = GoldilocksField;
@@ -115,8 +135,18 @@ impl GenericConfig<2> for PoseidonGoldilocksConfig {
     type InnerHasher = PoseidonHash;
 }
 
+/// Configuration using Poseidon over the Goldilocks field.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+pub struct Poseidon2GoldilocksConfig;
+impl GenericConfig<2> for Poseidon2GoldilocksConfig {
+    type F = GoldilocksField;
+    type FE = QuadraticExtension<Self::F>;
+    type Hasher = Poseidon2Hash;
+    type InnerHasher = Poseidon2Hash;
+}
+
 /// Configuration using truncated Keccak over the Goldilocks field.
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq)]
 pub struct KeccakGoldilocksConfig;
 impl GenericConfig<2> for KeccakGoldilocksConfig {
     type F = GoldilocksField;

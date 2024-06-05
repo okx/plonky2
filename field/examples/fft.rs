@@ -2,8 +2,6 @@ use plonky2_field::fft::fft;
 use plonky2_field::goldilocks_field::GoldilocksField;
 use plonky2_field::polynomial::PolynomialCoeffs;
 use plonky2_field::types::Field;
-
-
 use rand::random;
 
 fn random_fr() -> u64 {

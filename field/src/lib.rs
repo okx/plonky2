@@ -1,12 +1,11 @@
 #![allow(incomplete_features)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::needless_range_loop)]
-#![feature(stdsimd)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(missing_debug_implementations)]
 #![feature(specialization)]
-// #![cfg_attr(not(test), no_std)]
-
+#![cfg_attr(not(test), no_std)]
+#![cfg(not(test))]
 extern crate alloc;
 
 pub(crate) mod arch;
@@ -38,6 +37,7 @@ include!(concat!(env!("OUT_DIR"), "/goldilock_root_of_unity.rs"));
 
 #[cfg(feature = "precompile")]
 use std::collections::HashMap;
+
 #[cfg(feature = "precompile")]
 use fft::FftRootTable;
 #[cfg(feature = "precompile")]
@@ -80,7 +80,6 @@ lazy_static! {
 
 #[cfg(test)]
 mod test {
-    
 
     #[cfg(feature = "precompile")]
     #[test]

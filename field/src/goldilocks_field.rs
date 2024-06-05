@@ -4,16 +4,15 @@ use core::iter::{Product, Sum};
 use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
 
 use num::{BigUint, Integer, ToPrimitive};
+#[cfg(feature = "precompile")]
+use plonky2_util::log2_strict;
 use plonky2_util::{assume, branch_hint};
 use serde::{Deserialize, Serialize};
-#[cfg(feature = "precompile")]
-use plonky2_util::{log2_strict};
 
 #[cfg(feature = "precompile")]
 use crate::fft::FftRootTable;
 use crate::ops::Square;
 use crate::types::{Field, Field64, PrimeField, PrimeField64, Sample};
-
 #[cfg(feature = "precompile")]
 use crate::PRE_COMPUTE_ROOT_TABLES;
 

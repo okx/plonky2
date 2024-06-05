@@ -1,5 +1,4 @@
 #![allow(incomplete_features)]
-
 #![feature(generic_const_exprs)]
 
 use std::fs::File;
@@ -8,8 +7,6 @@ use std::path::Path;
 use std::{env, fs};
 extern crate alloc;
 use alloc::alloc::{alloc, Layout};
-use alloc::boxed::Box;
-use alloc::vec::Vec;
 
 use plonky2_field::goldilocks_field::GoldilocksField;
 use plonky2_field::ops::Square;
@@ -84,7 +81,10 @@ where
 }
 
 pub fn generate_to(file: &mut File) -> Result<(), Error> {
-    println!("generate for start {:?}, end {:?}", PRE_COMPUTE_START, PRE_COMPUTE_END);
+    println!(
+        "generate for start {:?}, end {:?}",
+        PRE_COMPUTE_START, PRE_COMPUTE_END
+    );
     let context = RouContext::<PRE_COMPUTE_START, PRE_COMPUTE_END>::new_boxed();
     let pre_g = context.inspect_raw().as_ref();
 

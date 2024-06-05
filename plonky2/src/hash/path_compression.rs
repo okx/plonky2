@@ -1,5 +1,5 @@
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 
 use hashbrown::HashMap;
 use num::Integer;
@@ -129,8 +129,14 @@ mod tests {
         type F = <C as GenericConfig<D>>::F;
         let h = 10;
         let cap_height = 3;
-        let vs = (0..1 << h).map(|_| vec![F::rand()]).collect::<Vec<_>>();
-        let mt = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new(vs.clone(), cap_height);
+        let vs = (0..1 << h)
+            .flat_map(|_| vec![F::rand()])
+            .collect::<Vec<_>>();
+        let mt = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_1d(
+            vs.clone(),
+            1,
+            cap_height,
+        );
 
         let mut rng = OsRng;
         let k = rng.gen_range(1..=1 << h);
@@ -139,7 +145,10 @@ mod tests {
 
         let compressed_proofs = compress_merkle_proofs(cap_height, &indices, &proofs);
         let decompressed_proofs = decompress_merkle_proofs(
-            &indices.iter().map(|&i| vs[i].clone()).collect::<Vec<_>>(),
+            &indices
+                .iter()
+                .map(|&i| vec![vs[i].clone()])
+                .collect::<Vec<_>>(),
             &indices,
             &compressed_proofs,
             h,
@@ -148,12 +157,15 @@ mod tests {
 
         assert_eq!(proofs, decompressed_proofs);
 
-        let compressed_proof_bytes = serde_cbor::to_vec(&compressed_proofs).unwrap();
-        println!(
-            "Compressed proof length: {} bytes",
-            compressed_proof_bytes.len()
-        );
-        let proof_bytes = serde_cbor::to_vec(&proofs).unwrap();
-        println!("Proof length: {} bytes", proof_bytes.len());
+        #[cfg(feature = "std")]
+        {
+            let compressed_proof_bytes = serde_cbor::to_vec(&compressed_proofs).unwrap();
+            println!(
+                "Compressed proof length: {} bytes",
+                compressed_proof_bytes.len()
+            );
+            let proof_bytes = serde_cbor::to_vec(&proofs).unwrap();
+            println!("Proof length: {} bytes", proof_bytes.len());
+        }
     }
 }
