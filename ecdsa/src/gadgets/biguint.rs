@@ -108,13 +108,10 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilderBiguint<F, D>
         let targets: Vec<Target> = value.limbs.iter().map(|&l| l.0).collect();
         let zero = self.zero();
         // Check if all limbs are equal to zero
-        targets.iter().fold(
-            self._true(),
-            |is_all_eq: BoolTarget, x| {
-                let is_eq = self.is_equal(*x, zero);
-                self.and(is_all_eq, is_eq)
-            },
-        )
+        targets.iter().fold(self._true(), |is_all_eq: BoolTarget, x| {
+            let is_eq = self.is_equal(*x, zero);
+            self.and(is_all_eq, is_eq)
+        })
     }
 
     fn connect_biguint(&mut self, lhs: &BigUintTarget, rhs: &BigUintTarget) {
