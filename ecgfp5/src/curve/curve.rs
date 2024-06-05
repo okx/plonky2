@@ -9,7 +9,6 @@ use plonky2_field::{
     extension::{quintic::QuinticExtension, FieldExtension},
     goldilocks_field::GoldilocksField,
     ops::Square,
-    packed::PackedField,
     types::{Field, PrimeField64, Sample},
 };
 use rand::RngCore;
