@@ -1,17 +1,21 @@
-use crate::curve::scalar_field::Scalar;
-use crate::curve::{
-    curve::{Point, WeierstrassPoint},
-    GFp, GFp5,
+use crate::{
+    curve::{
+        curve::{Point, WeierstrassPoint},
+        scalar_field::Scalar,
+        GFp, GFp5,
+    },
+    gadgets::base_field::{CircuitBuilderGFp5, QuinticExtensionTarget},
 };
-use crate::gadgets::base_field::{CircuitBuilderGFp5, QuinticExtensionTarget};
-use plonky2::field::types::Field;
-use plonky2::hash::hash_types::RichField;
-use plonky2::iop::target::BoolTarget;
-use plonky2::iop::target::Target;
-use plonky2::iop::witness::Witness;
-use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2_ecdsa::gadgets::nonnative::NonNativeTarget;
-use plonky2_ecdsa::gadgets::split_nonnative::CircuitBuilderSplit;
+use plonky2::{
+    field::types::Field,
+    hash::hash_types::RichField,
+    iop::{
+        target::{BoolTarget, Target},
+        witness::Witness,
+    },
+    plonk::circuit_builder::CircuitBuilder,
+};
+use plonky2_ecdsa::gadgets::{nonnative::NonNativeTarget, split_nonnative::CircuitBuilderSplit};
 use plonky2_field::extension::Extendable;
 
 use super::base_field::PartialWitnessQuinticExt;
@@ -123,10 +127,7 @@ macro_rules! impl_circuit_builder_for_extension_degree {
                 let CurveTarget(([ax, ay], a_is_inf)) = a;
                 let CurveTarget(([bx, by], b_is_inf)) = b;
                 CurveTarget((
-                    [
-                        self.select_quintic_ext(cond, ax, bx),
-                        self.select_quintic_ext(cond, ay, by),
-                    ],
+                    [self.select_quintic_ext(cond, ax, bx), self.select_quintic_ext(cond, ay, by)],
                     BoolTarget::new_unsafe(self.select(cond, a_is_inf.target, b_is_inf.target)),
                 ))
             }
@@ -382,11 +383,8 @@ macro_rules! impl_circuit_builder_for_extension_degree {
                 let b_start = self.curve_random_access(b_four_bit_limbs[num_limbs - 1], &b_window);
                 let mut res = self.curve_add(a_start, b_start);
 
-                for (a_limb, b_limb) in a_four_bit_limbs
-                    .into_iter()
-                    .zip(b_four_bit_limbs)
-                    .rev()
-                    .skip(1)
+                for (a_limb, b_limb) in
+                    a_four_bit_limbs.into_iter().zip(b_four_bit_limbs).rev().skip(1)
                 {
                     for _ in 0..4 {
                         res = self.curve_double(res);

@@ -23,11 +23,7 @@ pub fn bench_scalar(c: &mut Criterion) {
     });
 
     c.bench_function("square", |b| {
-        b.iter_batched(
-            || Scalar::rand(),
-            |x| black_box(x.square()),
-            BatchSize::SmallInput,
-        )
+        b.iter_batched(|| Scalar::rand(), |x| black_box(x.square()), BatchSize::SmallInput)
     });
 
     c.bench_function("try_inverse", |b| {
@@ -42,12 +38,7 @@ pub fn bench_scalar(c: &mut Criterion) {
 
     c.bench_function("batch_multiplicative_inverse-tiny", |b| {
         b.iter_batched(
-            || {
-                (0..2)
-                    .into_iter()
-                    .map(|_| Scalar::rand())
-                    .collect::<Vec<_>>()
-            },
+            || (0..2).into_iter().map(|_| Scalar::rand()).collect::<Vec<_>>(),
             |x| Scalar::batch_multiplicative_inverse(&x),
             BatchSize::SmallInput,
         )
@@ -55,12 +46,7 @@ pub fn bench_scalar(c: &mut Criterion) {
 
     c.bench_function("batch_multiplicative_inverse-small", |b| {
         b.iter_batched(
-            || {
-                (0..4)
-                    .into_iter()
-                    .map(|_| Scalar::rand())
-                    .collect::<Vec<_>>()
-            },
+            || (0..4).into_iter().map(|_| Scalar::rand()).collect::<Vec<_>>(),
             |x| Scalar::batch_multiplicative_inverse(&x),
             BatchSize::SmallInput,
         )
@@ -68,12 +54,7 @@ pub fn bench_scalar(c: &mut Criterion) {
 
     c.bench_function("batch_multiplicative_inverse-medium", |b| {
         b.iter_batched(
-            || {
-                (0..16)
-                    .into_iter()
-                    .map(|_| Scalar::rand())
-                    .collect::<Vec<_>>()
-            },
+            || (0..16).into_iter().map(|_| Scalar::rand()).collect::<Vec<_>>(),
             |x| Scalar::batch_multiplicative_inverse(&x),
             BatchSize::SmallInput,
         )
@@ -81,12 +62,7 @@ pub fn bench_scalar(c: &mut Criterion) {
 
     c.bench_function("batch_multiplicative_inverse-large", |b| {
         b.iter_batched(
-            || {
-                (0..256)
-                    .into_iter()
-                    .map(|_| Scalar::rand())
-                    .collect::<Vec<_>>()
-            },
+            || (0..256).into_iter().map(|_| Scalar::rand()).collect::<Vec<_>>(),
             |x| Scalar::batch_multiplicative_inverse(&x),
             BatchSize::LargeInput,
         )
@@ -94,12 +70,7 @@ pub fn bench_scalar(c: &mut Criterion) {
 
     c.bench_function("batch_multiplicative_inverse-huge", |b| {
         b.iter_batched(
-            || {
-                (0..65536)
-                    .into_iter()
-                    .map(|_| Scalar::rand())
-                    .collect::<Vec<_>>()
-            },
+            || (0..65536).into_iter().map(|_| Scalar::rand()).collect::<Vec<_>>(),
             |x| Scalar::batch_multiplicative_inverse(&x),
             BatchSize::LargeInput,
         )

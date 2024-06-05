@@ -1,23 +1,27 @@
 use alloc::vec::Vec;
 use plonky2_ecdsa::gadgets::nonnative::NonNativeTarget;
-use plonky2_field::extension::quintic::QuinticExtension;
-use plonky2_field::goldilocks_field::GoldilocksField;
+use plonky2_field::{extension::quintic::QuinticExtension, goldilocks_field::GoldilocksField};
 
-use plonky2::hash::hash_types::RichField;
-use plonky2::iop::generator::{GeneratedValues, SimpleGenerator};
-use plonky2::iop::target::{BoolTarget, Target};
-use plonky2::iop::witness::{PartitionWitness, Witness, WitnessWrite};
-use plonky2::plonk::circuit_builder::CircuitBuilder;
-use plonky2_ecdsa::gadgets::biguint::BigUintTarget;
-use plonky2_ecdsa::gadgets::nonnative::CircuitBuilderNonNative;
-use plonky2_field::extension::{Extendable, FieldExtension};
-use plonky2_field::types::Field;
+use plonky2::{
+    hash::hash_types::RichField,
+    iop::{
+        generator::{GeneratedValues, SimpleGenerator},
+        target::{BoolTarget, Target},
+        witness::{PartitionWitness, Witness, WitnessWrite},
+    },
+    plonk::circuit_builder::CircuitBuilder,
+};
+use plonky2_ecdsa::gadgets::{biguint::BigUintTarget, nonnative::CircuitBuilderNonNative};
+use plonky2_field::{
+    extension::{Extendable, FieldExtension},
+    types::Field,
+};
 use plonky2_u32::gadgets::arithmetic_u32::U32Target;
 
-use crate::curve::base_field::SquareRoot;
-use crate::curve::scalar_field::Scalar;
-use crate::curve::{GFp, GFp5};
-use crate::gates::gfp5_mul::MulGFp5Gate;
+use crate::{
+    curve::{base_field::SquareRoot, scalar_field::Scalar, GFp, GFp5},
+    gates::gfp5_mul::MulGFp5Gate,
+};
 
 const THREE: GFp = GoldilocksField(3);
 
@@ -153,10 +157,7 @@ pub trait PartialWitnessQuinticExt<F: RichField + Extendable<5>>: Witness<F> {
         &self,
         targets: &[QuinticExtensionTarget],
     ) -> Vec<QuinticExtension<F>> {
-        targets
-            .iter()
-            .map(|&t| self.get_quintic_ext_target(t))
-            .collect()
+        targets.iter().map(|&t| self.get_quintic_ext_target(t)).collect()
     }
 
     fn set_quintic_ext_target(
@@ -218,11 +219,7 @@ impl CircuitBuilderGFp5<GFp> for CircuitBuilder<GFp, 2> {
     }
 
     fn connect_quintic_ext(&mut self, a: QuinticExtensionTarget, b: QuinticExtensionTarget) {
-        for (lhs, rhs) in a
-            .to_target_array()
-            .into_iter()
-            .zip(b.to_target_array().into_iter())
-        {
+        for (lhs, rhs) in a.to_target_array().into_iter().zip(b.to_target_array().into_iter()) {
             self.connect(lhs, rhs);
         }
     }
@@ -420,12 +417,8 @@ impl CircuitBuilderGFp5<GFp> for CircuitBuilder<GFp, 2> {
         let multiplicand_1_wires =
             MulGFp5Gate::wires_ith_multiplicand_1(i).map(|wire| Target::wire(gate, wire));
 
-        a.0.into_iter()
-            .zip(multiplicand_0_wires)
-            .for_each(|(a, wire)| self.connect(a, wire));
-        b.0.into_iter()
-            .zip(multiplicand_1_wires)
-            .for_each(|(b, wire)| self.connect(b, wire));
+        a.0.into_iter().zip(multiplicand_0_wires).for_each(|(a, wire)| self.connect(a, wire));
+        b.0.into_iter().zip(multiplicand_1_wires).for_each(|(b, wire)| self.connect(b, wire));
 
         let output_limbs: [Target; 5] = MulGFp5Gate::wires_ith_output(i)
             .map(|wire| Target::wire(gate, wire))
@@ -719,7 +712,7 @@ impl CircuitBuilderGFp5<GFp> for CircuitBuilder<GFp, 2> {
 // impl_circuit_builder_for_extension_degree!(4);
 // impl_circuit_builder_for_extension_degree!(5);
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QuinticQuotientGenerator {
     numerator: QuinticExtensionTarget,
     denominator: QuinticExtensionTarget,
@@ -732,11 +725,7 @@ impl QuinticQuotientGenerator {
         denominator: QuinticExtensionTarget,
         quotient: QuinticExtensionTarget,
     ) -> Self {
-        QuinticQuotientGenerator {
-            numerator,
-            denominator,
-            quotient,
-        }
+        QuinticQuotientGenerator { numerator, denominator, quotient }
     }
 }
 
@@ -769,16 +758,10 @@ impl<F: RichField + Extendable<5> + Extendable<2>> SimpleGenerator<F, 2>
     }
 
     fn run_once(&self, witness: &PartitionWitness<F>, out_buffer: &mut GeneratedValues<F>) {
-        let numerator_limbs = self
-            .numerator
-            .to_target_array()
-            .map(|t| witness.get_target(t));
+        let numerator_limbs = self.numerator.to_target_array().map(|t| witness.get_target(t));
         let numerator = QuinticExtension::<F>::from_basefield_array(numerator_limbs);
 
-        let denominator_limbs = self
-            .denominator
-            .to_target_array()
-            .map(|t| witness.get_target(t));
+        let denominator_limbs = self.denominator.to_target_array().map(|t| witness.get_target(t));
         let denominator = QuinticExtension::<F>::from_basefield_array(denominator_limbs);
 
         let quotient = if denominator == QuinticExtension::<F>::ZERO {
@@ -794,7 +777,7 @@ impl<F: RichField + Extendable<5> + Extendable<2>> SimpleGenerator<F, 2>
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct QuinticSqrtGenerator {
     x: QuinticExtensionTarget,
     root_x: QuinticExtensionTarget,
@@ -864,18 +847,26 @@ impl SimpleGenerator<GFp, 2> for QuinticSqrtGenerator {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
-    use plonky2::field::types::{Field, Sample};
-    use plonky2::iop::witness::PartialWitness;
-    use plonky2::plonk::circuit_builder::CircuitBuilder;
-    use plonky2::plonk::circuit_data::CircuitConfig;
-    use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use plonky2::{
+        field::types::{Field, Sample},
+        iop::witness::PartialWitness,
+        plonk::{
+            circuit_builder::CircuitBuilder,
+            circuit_data::CircuitConfig,
+            config::{GenericConfig, PoseidonGoldilocksConfig},
+        },
+    };
     use plonky2_field::types::PrimeField64;
     use rand::thread_rng;
 
     use super::*;
-    use crate::curve::scalar_field::biguint_from_array;
-    use crate::curve::test_utils::{gfp5_random_non_square, gfp5_random_sgn0_eq_0};
-    use crate::gadgets::scalar_field::{CircuitBuilderScalar, PartialWitnessScalar};
+    use crate::{
+        curve::{
+            scalar_field::biguint_from_array,
+            test_utils::{gfp5_random_non_square, gfp5_random_sgn0_eq_0},
+        },
+        gadgets::scalar_field::{CircuitBuilderScalar, PartialWitnessScalar},
+    };
 
     #[test]
     fn test_add() -> Result<()> {

@@ -124,8 +124,7 @@ mod tests {
     use rand::thread_rng;
 
     use super::*;
-    use crate::curve::base_field::SquareRoot;
-    use crate::curve::test_utils::gfp5_random_non_square;
+    use crate::curve::{base_field::SquareRoot, test_utils::gfp5_random_non_square};
 
     #[test]
     fn test_legendre() {

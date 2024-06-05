@@ -36,9 +36,7 @@ const WIRES_PER_OP: usize = 3 * DEGREE;
 
 impl MulGFp5Gate {
     pub fn new_from_config(config: &CircuitConfig) -> Self {
-        Self {
-            num_ops: Self::num_ops(config),
-        }
+        Self { num_ops: Self::num_ops(config) }
     }
 
     /// Determine the maximum number of operations that can fit in one gate for the given config.
@@ -88,17 +86,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulGFp5Gate {
 
         let mut constraints = Vec::new();
         for i in 0..self.num_ops {
-            let multiplicand_0_limbs: [F::Extension; 5] = vars.local_wires
-                [Self::wires_ith_multiplicand_0(i)]
-            .try_into()
-            .unwrap();
-            let multiplicand_1_limbs: [F::Extension; 5] = vars.local_wires
-                [Self::wires_ith_multiplicand_1(i)]
-            .try_into()
-            .unwrap();
-            let output_limbs: [F::Extension; 5] = vars.local_wires[Self::wires_ith_output(i)]
-                .try_into()
-                .unwrap();
+            let multiplicand_0_limbs: [F::Extension; 5] =
+                vars.local_wires[Self::wires_ith_multiplicand_0(i)].try_into().unwrap();
+            let multiplicand_1_limbs: [F::Extension; 5] =
+                vars.local_wires[Self::wires_ith_multiplicand_1(i)].try_into().unwrap();
+            let output_limbs: [F::Extension; 5] =
+                vars.local_wires[Self::wires_ith_output(i)].try_into().unwrap();
 
             let prod_limbs = gfp5_mul_limbwise(multiplicand_0_limbs, multiplicand_1_limbs);
             let computed_output_limbs = gfp5_scalar_mul_limbwise(c, prod_limbs);
@@ -121,21 +114,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulGFp5Gate {
         let const_limbs = vars.local_constants[0];
 
         for i in 0..self.num_ops {
-            let multiplicand_0_limbs = vars
-                .local_wires
-                .view(Self::wires_ith_multiplicand_0(i))
-                .try_into()
-                .unwrap();
-            let multiplicand_1_limbs = vars
-                .local_wires
-                .view(Self::wires_ith_multiplicand_1(i))
-                .try_into()
-                .unwrap();
-            let output_limbs: [F; 5] = vars
-                .local_wires
-                .view(Self::wires_ith_output(i))
-                .try_into()
-                .unwrap();
+            let multiplicand_0_limbs =
+                vars.local_wires.view(Self::wires_ith_multiplicand_0(i)).try_into().unwrap();
+            let multiplicand_1_limbs =
+                vars.local_wires.view(Self::wires_ith_multiplicand_1(i)).try_into().unwrap();
+            let output_limbs: [F; 5] =
+                vars.local_wires.view(Self::wires_ith_output(i)).try_into().unwrap();
 
             let prod_limbs = gfp5_mul_limbwise(multiplicand_0_limbs, multiplicand_1_limbs);
             let computed_output_limbs = gfp5_scalar_mul_limbwise(const_limbs, prod_limbs);
@@ -157,17 +141,12 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulGFp5Gate {
 
         let mut constraints = Vec::new();
         for i in 0..self.num_ops {
-            let multiplicand_0_limbs: [ExtensionTarget<D>; 5] = vars.local_wires
-                [Self::wires_ith_multiplicand_0(i)]
-            .try_into()
-            .unwrap();
-            let multiplicand_1_limbs: [ExtensionTarget<D>; 5] = vars.local_wires
-                [Self::wires_ith_multiplicand_1(i)]
-            .try_into()
-            .unwrap();
-            let output_limbs: [ExtensionTarget<D>; 5] = vars.local_wires[Self::wires_ith_output(i)]
-                .try_into()
-                .unwrap();
+            let multiplicand_0_limbs: [ExtensionTarget<D>; 5] =
+                vars.local_wires[Self::wires_ith_multiplicand_0(i)].try_into().unwrap();
+            let multiplicand_1_limbs: [ExtensionTarget<D>; 5] =
+                vars.local_wires[Self::wires_ith_multiplicand_1(i)].try_into().unwrap();
+            let output_limbs: [ExtensionTarget<D>; 5] =
+                vars.local_wires[Self::wires_ith_output(i)].try_into().unwrap();
 
             let prod_limbs = gfp5_mul_limbwise_circuit_lifted(
                 builder,
@@ -191,14 +170,8 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for MulGFp5Gate {
     fn generators(&self, row: usize, local_constants: &[F]) -> Vec<WitnessGeneratorRef<F, D>> {
         (0..self.num_ops)
             .map(|op_idx| {
-                let g: Box<dyn WitnessGenerator<F, D>> = Box::new(
-                    MulGFp5Generator {
-                        row,
-                        c: local_constants[0],
-                        op_idx,
-                    }
-                    .adapter(),
-                );
+                let g: Box<dyn WitnessGenerator<F, D>> =
+                    Box::new(MulGFp5Generator { row, c: local_constants[0], op_idx }.adapter());
                 WitnessGeneratorRef(g)
             })
             .collect()
@@ -378,10 +351,14 @@ mod tests {
     use super::*;
     use anyhow::Result;
 
-    use plonky2::field::goldilocks_field::GoldilocksField;
-    use plonky2::gates::gate_testing::{test_eval_fns, test_low_degree};
-    use plonky2::plonk::circuit_data::CircuitConfig;
-    use plonky2::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use plonky2::{
+        field::goldilocks_field::GoldilocksField,
+        gates::gate_testing::{test_eval_fns, test_low_degree},
+        plonk::{
+            circuit_data::CircuitConfig,
+            config::{GenericConfig, PoseidonGoldilocksConfig},
+        },
+    };
 
     #[test]
     fn low_degree() {

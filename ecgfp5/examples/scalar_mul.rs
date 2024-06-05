@@ -48,11 +48,7 @@ pub fn main() {
     let mut pw = PartialWitness::new();
     pw.set_curve_target(prod, prod_expected.to_weierstrass());
 
-    let CircuitData {
-        prover_only,
-        common,
-        verifier_only: _,
-    } = &circuit;
+    let CircuitData { prover_only, common, verifier_only: _ } = &circuit;
 
     let mut timing = TimingTree::new("prove", Level::Debug);
     let proof = prove(prover_only, common, pw, &mut timing).expect("prover failed");
@@ -81,11 +77,7 @@ pub fn main() {
     let mut pw = PartialWitness::new();
     pw.set_curve_target(prod, prod_expected.to_weierstrass());
 
-    let CircuitData {
-        prover_only,
-        common,
-        verifier_only: _,
-    } = &circuit;
+    let CircuitData { prover_only, common, verifier_only: _ } = &circuit;
 
     let mut timing = TimingTree::new("prove", Level::Debug);
     let proof = prove(prover_only, common, pw, &mut timing).expect("prover failed");

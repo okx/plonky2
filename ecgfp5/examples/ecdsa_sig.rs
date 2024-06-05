@@ -131,11 +131,7 @@ pub fn main() {
     // build circuit
     builder.print_gate_counts(0);
     let circuit = builder.build::<C>();
-    let CircuitData {
-        prover_only,
-        common,
-        verifier_only: _,
-    } = &circuit;
+    let CircuitData { prover_only, common, verifier_only: _ } = &circuit;
 
     let pw = PartialWitness::new();
     let mut timing = TimingTree::new("prove", Level::Debug);

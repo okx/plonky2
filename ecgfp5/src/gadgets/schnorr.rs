@@ -1,10 +1,11 @@
 #![allow(dead_code)]
 
-use crate::curve::curve::Point;
-use crate::curve::scalar_field::Scalar;
-use crate::gadgets::curve::CircuitBuilderEcGFp5;
-use plonky2::field::types::Field;
+use crate::{
+    curve::{curve::Point, scalar_field::Scalar},
+    gadgets::curve::CircuitBuilderEcGFp5,
+};
 use plonky2::{
+    field::types::Field,
     hash::{
         hashing::hash_n_to_m_no_pad,
         poseidon::{PoseidonHash, PoseidonPermutation},
@@ -117,10 +118,7 @@ fn hash(message: &[F]) -> [F; 5] {
 }
 
 fn hash_target(builder: &mut CircuitBuilder<F, { D }>, message: &[Target]) -> [Target; 5] {
-    builder
-        .hash_n_to_m_no_pad::<PoseidonHash>(message.to_vec(), 5)
-        .try_into()
-        .unwrap()
+    builder.hash_n_to_m_no_pad::<PoseidonHash>(message.to_vec(), 5).try_into().unwrap()
 }
 
 #[cfg(test)]

@@ -3,16 +3,17 @@
 /// with some modifications to make it play more nicely with plonky2 primitives
 /// His implementation can be found here: https://github.com/pornin/ecgfp5
 use alloc::vec::Vec;
-use core::fmt::{self, Debug, Display, Formatter};
-use core::hash::{Hash, Hasher};
-use core::iter::{Product, Sum};
-use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use core::{
+    fmt::{self, Debug, Display, Formatter},
+    hash::{Hash, Hasher},
+    iter::{Product, Sum},
+    ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
+};
 use plonky2_field::extension::quintic::QuinticExtension;
 use rand::RngCore;
 
 use itertools::Itertools;
-use num::bigint::BigUint;
-use num::One;
+use num::{bigint::BigUint, One};
 use serde::{Deserialize, Serialize};
 
 use plonky2_field::types::{Field, PrimeField, PrimeField64, Sample};
@@ -25,7 +26,7 @@ use super::GFp5;
 /// ```ignore
 /// P = 1067993516717146951041484916571792702745057740581727230159139685185762082554198619328292418486241
 /// ```
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Copy, Clone, Serialize, Deserialize, PartialOrd, Ord)]
 pub struct Scalar(pub [u64; 5]);
 
 impl Default for Scalar {
@@ -198,10 +199,7 @@ impl Field for Scalar {
     fn from_noncanonical_biguint(val: BigUint) -> Self {
         let val = val % Self::order();
         Self(
-            val.to_u64_digits()
-                .into_iter()
-                .pad_using(5, |_| 0)
-                .collect::<Vec<_>>()[..]
+            val.to_u64_digits().into_iter().pad_using(5, |_| 0).collect::<Vec<_>>()[..]
                 .try_into()
                 .expect("error converting to u64 array"),
         )
@@ -318,9 +316,7 @@ impl Scalar {
         let mut r = Self::ZERO;
         let mut c: u64 = 0;
         for i in 0..5 {
-            let z = (self.0[i] as u128)
-                .wrapping_add(a.0[i] as u128)
-                .wrapping_add(c as u128);
+            let z = (self.0[i] as u128).wrapping_add(a.0[i] as u128).wrapping_add(c as u128);
             r.0[i] = z as u64;
             c = (z >> 64) as u64;
         }
@@ -334,9 +330,7 @@ impl Scalar {
         let mut r = Self::ZERO;
         let mut c: u64 = 0;
         for i in 0..5 {
-            let z = (self.0[i] as u128)
-                .wrapping_sub(a.0[i] as u128)
-                .wrapping_sub(c as u128);
+            let z = (self.0[i] as u128).wrapping_sub(a.0[i] as u128).wrapping_sub(c as u128);
             r.0[i] = z as u64;
             c = ((z >> 64) as u64) & 1;
         }
@@ -393,10 +387,7 @@ impl Scalar {
             //                         < 2^384
             // Thus, the new r fits on 320 bits.
             let m = rhs.0[i];
-            let f = self.0[0]
-                .wrapping_mul(m)
-                .wrapping_add(r.0[0])
-                .wrapping_mul(Self::N0I);
+            let f = self.0[0].wrapping_mul(m).wrapping_add(r.0[0]).wrapping_mul(Self::N0I);
             let mut cc1: u64 = 0;
             let mut cc2: u64 = 0;
             for j in 0..5 {
@@ -653,6 +644,45 @@ impl Scalar {
             | (self.0[4] ^ rhs.0[4]);
         ((x | x.wrapping_neg()) >> 63).wrapping_sub(1)
     }
+
+    pub fn to_hex_string(&self) -> String {
+        let u64_array = self.0;
+
+        let mut buf: [u8; 40] = [0; 40];
+        let dst_ptr = buf.as_mut_ptr();
+
+        let mut offset = 0;
+        for e in u64_array {
+            let bytes = e.to_le_bytes();
+            unsafe {
+                let src_ptr = bytes.as_ptr();
+                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr.add(offset), 8);
+                offset = offset + 8;
+            }
+        }
+
+        let hex_string = hex::encode(&buf);
+        hex_string
+    }
+
+    pub fn from_hex_string(input_hex_string: &str) -> Self {
+        let buf: Vec<u8> = hex::decode(input_hex_string).unwrap();
+        let mut data: [u64; 5] = [0; 5];
+
+        let src_ptr = buf.as_ptr();
+        let mut offset = 0;
+        for ele in data.iter_mut() {
+            unsafe {
+                let mut v_buf: [u8; 8] = [0; 8];
+                std::ptr::copy_nonoverlapping(src_ptr.add(offset), v_buf.as_mut_ptr(), 8);
+                let v: u64 = u64::from_le_bytes(v_buf);
+                *ele = v;
+            }
+            offset = offset + 8;
+        }
+
+        Self(data)
+    }
 }
 
 /// A custom 161-bit integer type; used for splitting a scalar into a
@@ -767,9 +797,7 @@ impl Signed161 {
             let vw = v[i - j];
             let vws = vw.wrapping_shl(s as u32) | vbits;
             vbits = vw.wrapping_shr((64 - s) as u32);
-            let z = (self.0[i] as u128)
-                .wrapping_sub(vws as u128)
-                .wrapping_sub(cc as u128);
+            let z = (self.0[i] as u128).wrapping_sub(vws as u128).wrapping_sub(cc as u128);
             self.0[i] = z as u64;
             cc = ((z >> 64) as u64) & 1;
         }
@@ -779,9 +807,7 @@ impl Signed161 {
         let mut cc = 0;
         let j = 3 - v.len();
         for i in j..3 {
-            let z = (self.0[i] as u128)
-                .wrapping_sub(v[i - j] as u128)
-                .wrapping_sub(cc as u128);
+            let z = (self.0[i] as u128).wrapping_sub(v[i - j] as u128).wrapping_sub(cc as u128);
             self.0[i] = z as u64;
             cc = ((z >> 64) as u64) & 1;
         }
@@ -957,9 +983,7 @@ impl Signed640 {
             let vw = v[i - j];
             let vws = vw.wrapping_shl(s as u32) | vbits;
             vbits = vw.wrapping_shr((64 - s) as u32);
-            let z = (self.0[i] as u128)
-                .wrapping_sub(vws as u128)
-                .wrapping_sub(cc as u128);
+            let z = (self.0[i] as u128).wrapping_sub(vws as u128).wrapping_sub(cc as u128);
             self.0[i] = z as u64;
             cc = ((z >> 64) as u64) & 1;
         }
@@ -969,9 +993,7 @@ impl Signed640 {
         let mut cc = 0;
         let j = 10 - v.len();
         for i in j..10 {
-            let z = (self.0[i] as u128)
-                .wrapping_sub(v[i - j] as u128)
-                .wrapping_sub(cc as u128);
+            let z = (self.0[i] as u128).wrapping_sub(v[i - j] as u128).wrapping_sub(cc as u128);
             self.0[i] = z as u64;
             cc = ((z >> 64) as u64) & 1;
         }
@@ -1056,9 +1078,7 @@ mod tests {
         assert!(c5 == 0xFFFFFFFFFFFFFFFF);
         assert!(s5.encode() == buf5);
         {
-            let should_be_none = Scalar::from_canonical_bytes(&buf4);
-            assert!(should_be_none.is_none());
-            let should_be_some = Scalar::from_canonical_bytes(&buf5);
+            let should_be_some = Scalar::from_canonical_bytes(buf5);
             assert!(should_be_some.is_some());
             assert!(should_be_some.unwrap() == s5);
         }
@@ -1109,6 +1129,23 @@ mod tests {
             let c1 = v1.to_scalar_vartime();
             assert!((c1 * s - c0).iszero() == 0xFFFFFFFFFFFFFFFF);
         }
+    }
+
+    #[test]
+    fn test_convert_hex_str() {
+        // buf4 = a randomly chosen 512-bit integer
+        let buf4: [u8; 64] = [
+            0xB5, 0xDD, 0x28, 0xB8, 0xD2, 0x9B, 0x6F, 0xF8, 0x15, 0x65, 0x3F, 0x89, 0xDB, 0x7B,
+            0xA9, 0xDE, 0x33, 0x7D, 0xA8, 0x27, 0x82, 0x26, 0xB4, 0xD6, 0x9E, 0x1F, 0xFA, 0x97,
+            0x3D, 0x9E, 0x01, 0x9C, 0x77, 0xC9, 0x63, 0x5C, 0xB8, 0x34, 0xD8, 0x1A, 0x4D, 0xCB,
+            0x03, 0x48, 0x62, 0xCD, 0xEE, 0xC9, 0x8E, 0xC8, 0xC9, 0xA7, 0xB3, 0x6E, 0xDA, 0xCE,
+            0x18, 0x75, 0x1B, 0xDD, 0x4F, 0x94, 0x67, 0xB5,
+        ];
+
+        let s4 = Scalar::from_noncanonical_bytes(&buf4[..]);
+        let hex_str = s4.to_hex_string();
+        let recoverred = Scalar::from_hex_string(&hex_str);
+        assert_eq!(s4, recoverred);
     }
 
     test_field_arithmetic!(crate::curve::scalar_field::Scalar);

@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
-use plonky2_ecgfp5::curve::curve::Point;
-use plonky2_ecgfp5::curve::scalar_field::Scalar;
+use plonky2_ecgfp5::curve::{curve::Point, scalar_field::Scalar};
 use plonky2_field::types::Sample;
 
 pub fn bench_curve(c: &mut Criterion) {
