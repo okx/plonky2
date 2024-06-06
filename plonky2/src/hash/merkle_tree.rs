@@ -285,7 +285,6 @@ fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     if *gpu_id_lock >= num_gpus as u64 {
         *gpu_id_lock = 0;
     }
-    Mutex::unlock(gpu_id_lock);
 
     let now = Instant::now();
     let mut gpu_leaves_buf: HostOrDeviceSlice<'_, F> =
