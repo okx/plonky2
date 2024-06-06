@@ -11,4 +11,5 @@ pub mod path_compression;
 pub mod poseidon;
 pub mod poseidon2;
 pub mod poseidon_bn128;
+mod poseidon_bn128_ops;
 pub mod poseidon_goldilocks;
