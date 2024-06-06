@@ -778,6 +778,7 @@ unsafe fn mix(state: &mut [__m256i; 8], m: [[[u64; 4]; 5]; 5]) {
     }
 }
 
+#[allow(dead_code)]
 fn print_state3(state: &[__m256i; 3]) {
     let mut a: [u64; 4] = [0; 4];
     println!("State3:");
@@ -791,6 +792,7 @@ fn print_state3(state: &[__m256i; 3]) {
     }
 }
 
+#[allow(dead_code)]
 fn print_state4(state: &[__m256i; 4]) {
     let mut a: [u64; 4] = [0; 4];
     println!("State4:");
@@ -806,6 +808,7 @@ fn print_state4(state: &[__m256i; 4]) {
     }
 }
 
+#[allow(dead_code)]
 fn print_state8(state: &[__m256i; 8]) {
     let mut a: [u64; 4] = [0; 4];
     println!("State8:");
@@ -817,6 +820,7 @@ fn print_state8(state: &[__m256i; 8]) {
     }
 }
 
+#[allow(dead_code)]
 fn print_state(state: &[ElementBN128; 5]) {
     println!("{:?}", state[0]);
     println!("{:?}", state[1]);

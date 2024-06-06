@@ -161,6 +161,21 @@ pub fn mult_avx(a: &__m256i, b: &__m256i) -> __m256i {
     reduce_avx_128_64(&c_h, &c_l)
 }
 
+// Multiply two 64bit numbers with the assumption that the product does not averflow.
+#[inline]
+pub unsafe fn mul64_no_overflow(a: &__m256i, b: &__m256i) -> __m256i {
+    let r = _mm256_mul_epu32(*a, *b);
+    let ah = _mm256_srli_epi64(*a, 32);
+    let bh = _mm256_srli_epi64(*b, 32);
+    let r1 = _mm256_mul_epu32(*a, bh);
+    let r1 = _mm256_slli_epi64(r1, 32);
+    let r = _mm256_add_epi64(r, r1);
+    let r1 = _mm256_mul_epu32(ah, *b);
+    let r1 = _mm256_slli_epi64(r1, 32);
+    let r = _mm256_add_epi64(r, r1);
+    r
+}
+
 /*
 #[inline(always)]
 pub fn mult_avx_v2(a: &__m256i, b: &__m256i) -> __m256i {
