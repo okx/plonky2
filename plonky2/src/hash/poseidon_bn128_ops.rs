@@ -1,3 +1,6 @@
+#[cfg(feature = "papi")]
+use crate::util::papi::{init_papi, stop_papi};
+
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
 
@@ -4195,8 +4198,9 @@ impl ElementBN128 {
 
     #[inline]
     fn mul64trunc(self, a: u64, b: u64) -> u64 {
-        let c128: u128 = (a as u128) * (b as u128);
-        c128 as u64
+        // let c128: u128 = (a as u128) * (b as u128);
+        // c128 as u64
+        a * b
     }
 
     #[inline]
@@ -4218,6 +4222,21 @@ impl ElementBN128 {
             cout = 1;
         } else {
             r += cin;
+        }
+        (r, cout)
+    }
+
+    #[inline]
+    fn add64_no_carry(self, a: u64, b: u64) -> (u64, u64) {
+        let r;
+        let cout;
+
+        if a > 0xFFFFFFFFFFFFFFFF - b {
+            r = a.wrapping_add(b);
+            cout = 1;
+        } else {
+            r = a + b;
+            cout = 0;
         }
         (r, cout)
     }
@@ -4247,42 +4266,60 @@ impl ElementBN128 {
         (r, bout)
     }
 
+    #[inline]
+    fn sub64_no_borrow(self, a: u64, b: u64) -> (u64, u64) {
+        let r: u64;
+        let bout;
+
+        if a < b {
+            // r = 0xFFFFFFFFFFFFFFFF - b + a + 1;
+            r = a.wrapping_sub(b);
+            bout = 1;
+        } else {
+            r = a - b;
+            bout = 0;
+        }
+        (r, bout)
+    }
+
     // madd0 hi = a*b + c (discards lo bits)
     #[inline]
     fn madd0(self, a: u64, b: u64, c: u64) -> u64 {
         let (hi, lo) = self.mul64(a, b);
-        let (_, carry) = self.add64(lo, c, 0);
-        let (hi, _) = self.add64(hi, 0, carry);
-        hi
+        let mut carry = 0u64;
+        if 0xFFFFFFFFFFFFFFFF - lo < c {
+            carry = 1;
+        }
+        hi + carry
     }
 
     // madd1 hi, lo = a*b + c
     #[inline]
     fn madd1(self, a: u64, b: u64, c: u64) -> (u64, u64) {
         let (hi, lo) = self.mul64(a, b);
-        let (lo, carry) = self.add64(lo, c, 0);
-        let (hi, _) = self.add64(hi, 0, carry);
-        (hi, lo)
+        let (lo, carry) = self.add64_no_carry(lo, c);
+        (hi + carry, lo)
     }
 
     // madd2 hi, lo = a*b + c + d
     #[inline]
     fn madd2(self, a: u64, b: u64, c: u64, d: u64) -> (u64, u64) {
         let (hi, lo) = self.mul64(a, b);
-        let (cc, carry) = self.add64(c, d, 0);
-        let (hi, _) = self.add64(hi, 0, carry);
-        let (lo, carry) = self.add64(lo, cc, 0);
-        let (hi, _) = self.add64(hi, 0, carry);
+        let (cc, carry) = self.add64_no_carry(c, d);
+        let htmp = hi + carry;
+        let (lo, carry) = self.add64_no_carry(lo, cc);
+        let hi = htmp + carry;
         (hi, lo)
     }
 
     #[inline]
     fn madd3(self, a: u64, b: u64, c: u64, d: u64, e: u64) -> (u64, u64) {
         let (hi, lo) = self.mul64(a, b);
-        let (cc, carry) = self.add64(c, d, 0);
-        let (hi, _) = self.add64(hi, 0, carry);
-        let (lo, carry) = self.add64(lo, cc, 0);
-        let (hi, _) = self.add64(hi, e, carry);
+        let (cc, carry) = self.add64_no_carry(c, d);
+        let htmp = hi + carry;
+        let (lo, carry) = self.add64_no_carry(lo, cc);
+        let htmp = htmp + carry;
+        let hi = htmp + e;
         (hi, lo)
     }
 
@@ -4351,10 +4388,10 @@ impl ElementBN128 {
                                 && (z[0] < 4891460686036598785u64)))))))
         {
             let mut b;
-            (z[0], b) = self.sub64(z[0], 4891460686036598785u64, 0);
+            (z[0], b) = self.sub64_no_borrow(z[0], 4891460686036598785u64);
             (z[1], b) = self.sub64(z[1], 2896914383306846353u64, b);
             (z[2], b) = self.sub64(z[2], 13281191951274694749u64, b);
-            (z[3], _) = self.sub64(z[3], 3486998266802970665u64, b);
+            z[3] = z[3] - 3486998266802970665u64 - b;
         }
 
         z
@@ -4365,10 +4402,10 @@ impl ElementBN128 {
         let mut z: [u64; 4] = [0u64; 4];
         let mut carry;
 
-        (z[0], carry) = self.add64(x[0], y[0], 0);
+        (z[0], carry) = self.add64_no_carry(x[0], y[0]);
         (z[1], carry) = self.add64(x[1], y[1], carry);
         (z[2], carry) = self.add64(x[2], y[2], carry);
-        (z[3], _) = self.add64(x[3], y[3], carry);
+        z[3] = x[3] + y[3] + carry;
 
         // if z > q --> z -= q
         // note: this is NOT constant time
@@ -4381,10 +4418,10 @@ impl ElementBN128 {
                                 && (z[0] < 4891460686036598785u64)))))))
         {
             let mut b;
-            (z[0], b) = self.sub64(z[0], 4891460686036598785u64, 0);
+            (z[0], b) = self.sub64_no_borrow(z[0], 4891460686036598785u64);
             (z[1], b) = self.sub64(z[1], 2896914383306846353u64, b);
             (z[2], b) = self.sub64(z[2], 13281191951274694749u64, b);
-            (z[3], _) = self.sub64(z[3], 3486998266802970665u64, b);
+            z[3] = z[3] - 3486998266802970665u64 - b;
         }
 
         z
@@ -4437,10 +4474,10 @@ impl ElementBN128 {
                                 && (z[0] < 4891460686036598785u64)))))))
         {
             let mut b;
-            (z[0], b) = self.sub64(z[0], 4891460686036598785u64, 0);
+            (z[0], b) = self.sub64_no_borrow(z[0], 4891460686036598785u64);
             (z[1], b) = self.sub64(z[1], 2896914383306846353u64, b);
             (z[2], b) = self.sub64(z[2], 13281191951274694749u64, b);
-            (z[3], _) = self.sub64(z[3], 3486998266802970665u64, b);
+            z[3] = z[3] - 3486998266802970665u64 - b;
         }
 
         z
@@ -4550,6 +4587,11 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
     }
 
     pub fn permute_fn(&self, input: [u64; 12]) -> [u64; 12] {
+        #[cfg(feature = "papi")]
+        let mut event_set = init_papi();
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         let mut inp: [ElementBN128; 4] = [ElementBN128::zero(); 4];
         for i in 0..4 {
             inp[i].z[0] = input[i * 3 + 2];
@@ -4558,6 +4600,11 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
             inp[i].z[3] = 0;
             inp[i].to_mont();
         }
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "to_mont");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
 
         const CT: usize = 5;
         const N_ROUNDS_F: usize = 8;
@@ -4571,15 +4618,42 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
 
         self.ark(&mut state, C, 0);
 
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "first ark");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
             self.ark(&mut state, C, (i + 1) * CT);
             self.mix(&mut state, M);
         }
 
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "first full rounds");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         self.exp5state(&mut state);
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "exp5state");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         self.ark(&mut state, C, (N_ROUNDS_F / 2) * CT);
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "ark");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         self.mix(&mut state, P);
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "mix");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
 
         for i in 0..N_ROUNDS_P {
             state[0].exp5();
@@ -4603,13 +4677,27 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
             state[0] = new_state0;
         }
 
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "partial rounds");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
-            self.ark(&mut state, C, (N_ROUNDS_F / 2 + 1) * CT + N_ROUNDS_P + i * CT);
+            self.ark(
+                &mut state,
+                C,
+                (N_ROUNDS_F / 2 + 1) * CT + N_ROUNDS_P + i * CT,
+            );
             self.mix(&mut state, M);
         }
         self.exp5state(&mut state);
         self.mix(&mut state, M);
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "second full rounds");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
 
         let mut out: [u64; 12] = [0; 12];
         for i in 0..4 {
@@ -4624,6 +4712,8 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
                 out[i] = out[i] - 0xFFFFFFFF00000001u64;
             }
         }
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "from_mont");
 
         out
     }

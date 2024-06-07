@@ -2,6 +2,9 @@ use core::arch::x86_64::*;
 
 use crate::hash::poseidon_bn128_ops::{ElementBN128, C, M, P, S};
 
+#[cfg(feature = "papi")]
+use crate::util::papi::{init_papi, stop_papi};
+
 #[allow(dead_code)]
 #[inline]
 unsafe fn set_zero() -> __m256i {
@@ -113,8 +116,9 @@ unsafe fn sub64(a: &__m256i, b: &__m256i, bin: &__m256i) -> (__m256i, __m256i) {
     (r, bo)
 }
 
+#[allow(dead_code)]
 #[inline]
-unsafe fn mul64(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
+unsafe fn mul64_v1(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
     let mut av: [u64; 4] = [0; 4];
     let mut bv: [u64; 4] = [0; 4];
     let mut hv: [u64; 4] = [0; 4];
@@ -134,35 +138,50 @@ unsafe fn mul64(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
     (h, l)
 }
 
+unsafe fn mul64(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
+    let ah = _mm256_srli_epi64(*a, 32);
+    let bh = _mm256_srli_epi64(*b, 32);
+    let rl = _mm256_mul_epu32(*a, *b);
+    let ahbl = _mm256_mul_epu32(ah, *b);
+    let albh = _mm256_mul_epu32(*a, bh);
+    let rh = _mm256_mul_epu32(ah, bh);
+    let (rm, cm) = add64_no_carry(&ahbl, &albh);
+    let rm_l = _mm256_slli_epi64(rm, 32);
+    let rm_h = _mm256_srli_epi64(rm, 32);
+    let (rl, cl) = add64_no_carry(&rl, &rm_l);
+    let cm_s = _mm256_slli_epi64(cm, 32);
+    let rtmp = _mm256_add_epi64(rh, cm_s);
+    let (rh, _) = add64(&rtmp, &rm_h, &cl);
+
+    (rh, rl)
+}
+
 // madd0 hi = a*b + c (discards lo bits)
 #[inline]
 unsafe fn madd0(a: &__m256i, b: &__m256i, c: &__m256i) -> __m256i {
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let (hi, lo) = mul64(a, b);
-    let (_, cr) = add64(&lo, c, &zeros);
-    let (hi, _) = add64(&hi, &zeros, &cr);
+    let (_, cr) = add64_no_carry(&lo, c);
+    let hi = _mm256_add_epi64(hi, cr);
     hi
 }
 
 // madd1 hi, lo = a * b + c
 #[inline]
 unsafe fn madd1(a: &__m256i, b: &__m256i, c: &__m256i) -> (__m256i, __m256i) {
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let (hi, lo) = mul64(a, b);
-    let (lo, cr) = add64(&lo, c, &zeros);
-    let (hi, _) = add64(&hi, &zeros, &cr);
+    let (lo, cr) = add64_no_carry(&lo, c);
+    let hi = _mm256_add_epi64(hi, cr);
     (hi, lo)
 }
 
 // madd2 hi, lo = a * b + c + d
 #[inline]
 unsafe fn madd2(a: &__m256i, b: &__m256i, c: &__m256i, d: &__m256i) -> (__m256i, __m256i) {
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let (hi, lo) = mul64(a, b);
-    let (c, cr) = add64(c, d, &zeros);
-    let (hi, _) = add64(&hi, &zeros, &cr);
-    let (lo, cr) = add64(&lo, &c, &zeros);
-    let (hi, _) = add64(&hi, &zeros, &cr);
+    let (c, cr) = add64_no_carry(c, d);
+    let hi = _mm256_add_epi64(hi, cr);
+    let (lo, cr) = add64_no_carry(&lo, &c);
+    let hi = _mm256_add_epi64(hi, cr);
     (hi, lo)
 }
 
@@ -174,43 +193,34 @@ unsafe fn madd3(
     d: &__m256i,
     e: &__m256i,
 ) -> (__m256i, __m256i) {
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let (hi, lo) = mul64(a, b);
-    let (c, cr) = add64(c, d, &zeros);
-    let (hi, _) = add64(&hi, &zeros, &cr);
-    let (lo, cr) = add64(&lo, &c, &zeros);
-    let (hi, _) = add64(&hi, e, &cr);
+    let (c, cr) = add64_no_carry(c, d);
+    let hi = _mm256_add_epi64(hi, cr);
+    let (lo, cr) = add64_no_carry(&lo, &c);
+    let hi = _mm256_add_epi64(hi, cr);
+    let hi = _mm256_add_epi64(hi, *e);
     (hi, lo)
 }
 
 #[inline]
 pub unsafe fn _mm256_mullo_epi64(a: __m256i, b: __m256i) -> __m256i {
+    let rl = _mm256_mul_epu32(a, b);
+    let ah = _mm256_srli_epi64(a, 32);
+    let bh = _mm256_srli_epi64(b, 32);
+    let rh_1 = _mm256_mul_epu32(a, bh);
+    let rh_2 = _mm256_mul_epu32(ah, b);
+    let rh = _mm256_add_epi64(rh_1, rh_2);
+    let rh = _mm256_slli_epi64(rh, 32);
+    _mm256_add_epi64(rh, rl)
+}
+
+#[allow(dead_code)]
+#[inline]
+pub unsafe fn _mm256_mullo_epi64_v2(a: __m256i, b: __m256i) -> __m256i {
     let mut av: [u64; 4] = [0; 4];
     let mut bv: [u64; 4] = [0; 4];
     _mm256_storeu_si256(av.as_mut_ptr().cast::<__m256i>(), a);
     _mm256_storeu_si256(bv.as_mut_ptr().cast::<__m256i>(), b);
-    /*
-    asm!(
-        "mov rax, [rdi]",
-        "mov rdx, [rsi]",
-        "mul rdx",
-        "mov [rdi], rax",
-        "mov rax, [rdi+8]",
-        "mov rdx, [rsi+8]",
-        "mul rdx",
-        "mov [rdi+8], rax",
-        "mov rax, [rdi+16]",
-        "mov rdx, [rsi+16]",
-        "mul rdx",
-        "mov [rdi+16], rax",
-        "mov rax, [rdi+24]",
-        "mov rdx, [rsi+24]",
-        "mul rdx",
-        "mov [rdi+24], rax",
-        in("rdi") &av,
-        in("rsi") &bv,
-    );
-    */
     for i in 0..4 {
         av[i] = ((av[i] as u128) * (bv[i] as u128)) as u64;
     }
@@ -253,7 +263,6 @@ unsafe fn _mul_generic(x: [__m256i; 4], y: [__m256i; 4]) -> [__m256i; 4] {
         14042775128853446655u64 as i64,
         14042775128853446655u64 as i64,
     );
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
 
     // round 0
     let mut v = x[0];
@@ -322,10 +331,11 @@ unsafe fn _mul_generic(x: [__m256i; 4], y: [__m256i; 4]) -> [__m256i; 4] {
     let st2 = _mm256_andnot_si256(cmp0, ct2);
     let st3 = _mm256_andnot_si256(cmp0, ct3);
     let mut b;
-    (z[0], b) = sub64(&z[0], &st0, &zeros);
+    (z[0], b) = sub64_no_borrow(&z[0], &st0);
     (z[1], b) = sub64(&z[1], &st1, &b);
     (z[2], b) = sub64(&z[2], &st2, &b);
-    (z[3], _) = sub64(&z[3], &st3, &b);
+    let tmp = _mm256_sub_epi64(z[3], st3);
+    z[3] = _mm256_sub_epi64(tmp, b);
 
     z
 }
@@ -357,25 +367,13 @@ fn exp5state(state: &mut [__m256i; 8]) {
 #[inline]
 unsafe fn _add_generic(x: [__m256i; 4], y: [__m256i; 4]) -> [__m256i; 4] {
     let mut z: [__m256i; 4] = [_mm256_set_epi64x(0, 0, 0, 0); 4];
-    let mut cr = _mm256_set_epi64x(0, 0, 0, 0);
+    let mut cr: __m256i;
 
-    // TODO - delete
-    /*
-    let mut v: [u64; 4] = [0; 4];
-    for i in 0..4 {
-        _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), x[i]);
-        println!("x{:?}: {:?}", i, v);
-    }
-    for i in 0..4 {
-        _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), y[i]);
-        println!("y{:?}: {:?}", i, v);
-    }
-    */
-
-    (z[0], cr) = add64(&x[0], &y[0], &cr);
+    (z[0], cr) = add64_no_carry(&x[0], &y[0]);
     (z[1], cr) = add64(&x[1], &y[1], &cr);
     (z[2], cr) = add64(&x[2], &y[2], &cr);
-    (z[3], _) = add64(&x[3], &y[3], &cr);
+    let tmp = _mm256_add_epi64(x[3], y[3]);
+    z[3] = _mm256_add_epi64(tmp, cr);
 
     // if z > q --> z -= q
     let ct0 = _mm256_set_epi64x(
@@ -402,7 +400,6 @@ unsafe fn _add_generic(x: [__m256i; 4], y: [__m256i; 4]) -> [__m256i; 4] {
         3486998266802970665i64,
         3486998266802970665i64,
     );
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
 
     // if z > q --> z -= q
     let cmp0 = _mm256_cmpgt_epi64(ct0, z[0]);
@@ -423,39 +420,11 @@ unsafe fn _add_generic(x: [__m256i; 4], y: [__m256i; 4]) -> [__m256i; 4] {
     let st2 = _mm256_andnot_si256(cmp0, ct2);
     let st3 = _mm256_andnot_si256(cmp0, ct3);
     let mut b;
-    (z[0], b) = sub64(&z[0], &st0, &zeros);
+    (z[0], b) = sub64_no_borrow(&z[0], &st0);
     (z[1], b) = sub64(&z[1], &st1, &b);
     (z[2], b) = sub64(&z[2], &st2, &b);
-    (z[3], _) = sub64(&z[3], &st3, &b);
-
-    // TODO - delete
-    /*
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), z[2]);
-    println!("z2: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), st2);
-    println!("ct: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), b);
-    println!("bi: {:?}", v);
-
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), z[2]);
-    println!("z2: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), b);
-    println!("bo: {:?}", v);
-
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), z[3]);
-    println!("z3: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), st3);
-    println!("ct: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), b);
-    println!("bi: {:?}", v);
-
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), z[3]);
-    println!("z3: {:?}", v);
-    // for i in 0..4 {
-    //    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), z[i]);
-    //    println!("z{:?}: {:?}", i, v);
-    //}
-    */
+    let tmp = _mm256_sub_epi64(z[3], st3);
+    z[3] = _mm256_sub_epi64(tmp, b);
 
     z
 }
@@ -522,7 +491,6 @@ unsafe fn from_mont(a: [__m256i; 4]) -> [__m256i; 4] {
         14042775128853446655u64 as i64,
         14042775128853446655u64 as i64,
     );
-    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
 
     let mut z: [__m256i; 4] = a;
 
@@ -577,10 +545,11 @@ unsafe fn from_mont(a: [__m256i; 4]) -> [__m256i; 4] {
     let st2 = _mm256_andnot_si256(cmp0, ct2);
     let st3 = _mm256_andnot_si256(cmp0, ct3);
     let mut b;
-    (z[0], b) = sub64(&z[0], &st0, &zeros);
+    (z[0], b) = sub64_no_borrow(&z[0], &st0);
     (z[1], b) = sub64(&z[1], &st1, &b);
     (z[2], b) = sub64(&z[2], &st2, &b);
-    (z[3], _) = sub64(&z[3], &st3, &b);
+    let tmp = _mm256_sub_epi64(z[3], st3);
+    z[3] = _mm256_sub_epi64(tmp, b);
 
     z
 }
@@ -830,8 +799,13 @@ fn print_state(state: &[ElementBN128; 5]) {
     println!();
 }
 
+
+
 pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
-    let st64: Vec<i64> = input.into_iter().map(|x| x as i64).collect();
+    #[cfg(feature = "papi")]
+    let mut event_set = init_papi();
+    #[cfg(feature = "papi")]
+    event_set.start().unwrap();
 
     const CT: usize = 5;
     const N_ROUNDS_F: usize = 8;
@@ -840,20 +814,28 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
     unsafe {
         // load states
         let mut inp: [__m256i; 4] = [
-            _mm256_set_epi64x(st64[11], st64[8], st64[5], st64[2]),
-            _mm256_set_epi64x(st64[10], st64[7], st64[4], st64[1]),
-            _mm256_set_epi64x(st64[9], st64[6], st64[3], st64[0]),
+            _mm256_set_epi64x(input[11] as i64, input[8] as i64, input[5] as i64, input[2] as i64),
+            _mm256_set_epi64x(input[10] as i64, input[7] as i64, input[4] as i64, input[1] as i64),
+            _mm256_set_epi64x(input[9] as i64, input[6] as i64, input[3] as i64, input[0] as i64),
             _mm256_set_epi64x(0i64, 0i64, 0i64, 0i64),
         ];
 
         // to mont
         inp = to_mont(inp);
 
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "to_mont");
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
+
         // start rounds
         let zeros = _mm256_set_epi64x(0, 0, 0, 0);
         let mut state: [__m256i; 8] = [zeros, zeros, zeros, zeros, inp[0], inp[1], inp[2], inp[3]];
 
         ark(&mut state, C, 0);
+
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "first ark");
 
         /*
         let mut z = [0u64; 4];
@@ -883,19 +865,39 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
         assert_eq!(z8, z);
         */
 
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             exp5state(&mut state);
             ark(&mut state, C, (i + 1) * CT);
             mix(&mut state, M);
         }
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "half full rounds");
 
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         exp5state(&mut state);
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "exp5state");
+
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         ark(&mut state, C, (N_ROUNDS_F / 2) * CT);
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "ark");
+
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         mix(&mut state, P);
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "mix");
 
         // println!("After 1st rounds:");
         // print_state8(&state);
 
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         // switch to classic representation
         let mut cstate = [ElementBN128::zero(); 5];
         let mut tmps = [[0u64; 4]; 4];
@@ -958,10 +960,13 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
             }
             cstate[0] = new_state0;
         }
-
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "partial rounds");
         // println!("After middle rounds:");
         // print_state(&cstate);
 
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
         // switch to AVX
         state = [
             _mm256_set_epi64x(0i64, 0i64, 0i64, cstate[0].z[0] as i64),
@@ -1008,9 +1013,14 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
         }
         exp5state(&mut state);
         mix(&mut state, M);
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "half full rounds");
 
         // println!("After all rounds:");
         // print_state8(&state);
+
+        #[cfg(feature = "papi")]
+        event_set.start().unwrap();
 
         let ss0 = from_mont(state[0..4].try_into().unwrap());
         let ss1 = from_mont(state[4..8].try_into().unwrap());
@@ -1043,6 +1053,8 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
                 out[i] = out[i] - 0xFFFFFFFF00000001u64;
             }
         }
+        #[cfg(feature = "papi")]
+        stop_papi(&mut event_set, "from_mont");
 
         out
     }

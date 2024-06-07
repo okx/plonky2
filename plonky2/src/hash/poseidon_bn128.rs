@@ -305,7 +305,7 @@ mod tests {
             GenericHashOut::<F>::from_bytes(&left),
             GenericHashOut::<F>::from_bytes(&right),
         );
-        println!("output: {:?}", h);
+
         assert_eq!(h.elements[0].0, 5894400909438531414u64);
         assert_eq!(h.elements[1].0, 4814851992117646301u64);
         assert_eq!(h.elements[2].0, 17814584260098324190u64);
@@ -327,7 +327,7 @@ mod tests {
         v.push(F::from_canonical_u64(1441151880423231811u64));
 
         let h = PoseidonBN128Hash::hash_public_inputs(&v);
-        println!("out: {:?}", h);
+
         assert_eq!(h.elements[0].0, 2325439551141788444);
         assert_eq!(h.elements[1].0, 15244397589056680708);
         assert_eq!(h.elements[2].0, 5900587506047513594);
