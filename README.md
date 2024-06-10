@@ -34,12 +34,11 @@ GPU (CUDA): ``cargo bench merkle --features=cuda``
 
 ### Results
 
-The results in the table below represent the build time of a Merkle Tree with the indicated number of leaves (first row) using the hashing method indicated in the first column. The systems used for benchmarking are:
+The results in the table below represent the build time (in milliseconds) of a Merkle Tree with the indicated number of leaves (first row) using the hashing method indicated in the first column. The systems used for benchmarking are:
 
-- first three columns: AMD Ryzen Threadripper PRO 5975WX 32-Cores (only AVX2) +
-NVIDIA RTX 4090
+- first three columns: AMD Ryzen Threadripper PRO 5975WX 32-Cores (only AVX2) + NVIDIA RTX 4090 (feature `cuda`);
 
-- last three columns: AMD Ryzen 9 7950X 16-Core (AVX2 and AVX512DQ)
+- last three columns: AMD Ryzen 9 7950X 16-Core (AVX2 and AVX512DQ).
 
 
 | Number of MT Leaves | 2^13  | 2^14  | 2^15  |   | 2^13  | 2^14  | 2^15 |
