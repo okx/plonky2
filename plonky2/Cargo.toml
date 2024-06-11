@@ -100,6 +100,11 @@ harness = false
 name = "reverse_index_bits"
 harness = false
 
+[lib]
+name = "plonky2"
+path = "src/lib.rs"
+crate-type = ["cdylib", "lib"]
+
 # Display math equations properly in documentation
 [package.metadata.docs.rs]
 rustdoc-args = ["--html-in-header", ".cargo/katex-header.html"]
