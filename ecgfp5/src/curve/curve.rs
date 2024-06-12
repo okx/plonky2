@@ -288,43 +288,12 @@ impl Point {
     }
 
     pub fn to_hex_string(&self) -> String {
-        let mut buf: [u8; 5 * 8] = [0; 40];
-        let dst_ptr = buf.as_mut_ptr();
-
-        let mut offset = 0;
-
-        let encode = Point::encode(*self);
-        for e in encode.0 {
-            let bytes = e.to_canonical_u64().to_le_bytes();
-            unsafe {
-                std::ptr::copy_nonoverlapping(bytes.as_ptr(), dst_ptr.add(offset), 8);
-            }
-            offset = offset + 8;
-        }
-
-        let hex_string = hex::encode(&buf);
-        hex_string
+        hex::encode(self.to_le_bytes())
     }
 
-    pub fn from_hex_string(input_hex_string: &str) -> Self {
-        let buf: Vec<u8> = hex::decode(input_hex_string).unwrap();
-        let mut data: [GoldilocksField; 5] = [GoldilocksField::ZERO; 5];
-
-        let src_ptr = buf.as_ptr();
-        let mut offset = 0;
-        for ele in data.iter_mut() {
-            unsafe {
-                let mut v_buf: [u8; 8] = [0; 8];
-                std::ptr::copy_nonoverlapping(src_ptr.add(offset), v_buf.as_mut_ptr(), 8);
-                let v: u64 = u64::from_le_bytes(v_buf);
-                *ele = GoldilocksField::from_canonical_u64(v);
-            }
-            offset = offset + 8;
-        }
-
-        let quintic = QuinticExtension::<GoldilocksField>(data);
-        let decoded = Self::decode(quintic).unwrap();
-        decoded
+    pub fn from_hex_string(input_hex_string: &str) -> Option<Self> {
+        let vec: Vec<u8> = hex::decode(input_hex_string).ok()?;
+        Self::from_le_bytes(vec.try_into().ok()?)
     }
 
     // General point addition. formulas are complete (no special case).
@@ -1745,7 +1714,7 @@ mod tests {
 
         let p1 = Point::decode(w1).expect("w1 should successfully decode");
         let hex_str = p1.to_hex_string();
-        let recoverred = Point::from_hex_string(&hex_str);
+        let recoverred = Point::from_hex_string(&hex_str).unwrap();
         assert_eq!(p1, recoverred);
     }
 
