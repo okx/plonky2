@@ -646,42 +646,12 @@ impl Scalar {
     }
 
     pub fn to_hex_string(&self) -> String {
-        let u64_array = self.0;
-
-        let mut buf: [u8; 40] = [0; 40];
-        let dst_ptr = buf.as_mut_ptr();
-
-        let mut offset = 0;
-        for e in u64_array {
-            let bytes = e.to_le_bytes();
-            unsafe {
-                let src_ptr = bytes.as_ptr();
-                std::ptr::copy_nonoverlapping(src_ptr, dst_ptr.add(offset), 8);
-                offset = offset + 8;
-            }
-        }
-
-        let hex_string = hex::encode(&buf);
-        hex_string
+        hex::encode(self.encode())
     }
 
-    pub fn from_hex_string(input_hex_string: &str) -> Self {
-        let buf: Vec<u8> = hex::decode(input_hex_string).unwrap();
-        let mut data: [u64; 5] = [0; 5];
-
-        let src_ptr = buf.as_ptr();
-        let mut offset = 0;
-        for ele in data.iter_mut() {
-            unsafe {
-                let mut v_buf: [u8; 8] = [0; 8];
-                std::ptr::copy_nonoverlapping(src_ptr.add(offset), v_buf.as_mut_ptr(), 8);
-                let v: u64 = u64::from_le_bytes(v_buf);
-                *ele = v;
-            }
-            offset = offset + 8;
-        }
-
-        Self(data)
+    pub fn from_hex_string(input_hex_string: &str) -> Option<Self> {
+        let buf: Vec<u8> = hex::decode(input_hex_string).ok()?;
+        Self::from_canonical_bytes(buf.try_into().ok()?)
     }
 }
 
@@ -1144,7 +1114,7 @@ mod tests {
 
         let s4 = Scalar::from_noncanonical_bytes(&buf4[..]);
         let hex_str = s4.to_hex_string();
-        let recoverred = Scalar::from_hex_string(&hex_str);
+        let recoverred = Scalar::from_hex_string(&hex_str).unwrap();
         assert_eq!(s4, recoverred);
     }
 
