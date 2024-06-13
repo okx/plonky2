@@ -9,6 +9,7 @@ use core::{
     iter::{Product, Sum},
     ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign},
 };
+use plonky2::hash::hash_types::HashOut;
 use plonky2_field::extension::quintic::QuinticExtension;
 use rand::RngCore;
 
@@ -16,7 +17,11 @@ use itertools::Itertools;
 use num::{bigint::BigUint, One};
 use serde::{Deserialize, Serialize};
 
-use plonky2_field::types::{Field, PrimeField, PrimeField64, Sample};
+use plonky2_field::{
+    extension::FieldExtension,
+    goldilocks_field::GoldilocksField,
+    types::{Field, PrimeField, PrimeField64, Sample},
+};
 
 use super::GFp5;
 
@@ -460,6 +465,13 @@ impl Scalar {
     pub fn from_gfp5(x: GFp5) -> Self {
         let QuinticExtension(limbs) = x;
         Self::from_noncanonical_biguint(biguint_from_array(limbs.map(|l| l.to_canonical_u64())))
+    }
+
+    pub fn from_hashout(x: HashOut<GoldilocksField>) -> Self {
+        let mut arr: [GoldilocksField; 5] = [GoldilocksField::ZERO; 5];
+        arr[1..].copy_from_slice(&x.elements);
+        let gfp5 = GFp5::from_basefield_array(arr);
+        Self::from_gfp5(gfp5)
     }
 
     /// Decode the provided byte slice into a scalar. The bytes are
