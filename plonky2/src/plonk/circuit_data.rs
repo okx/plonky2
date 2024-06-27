@@ -419,6 +419,7 @@ pub struct CommonCircuitData<F: RichField + Extendable<D>, const D: usize> {
     pub fri_params: FriParams,
 
     /// The types of gates used in this circuit, along with their prefixes.
+    #[serde(skip_deserializing, skip_serializing)]
     pub gates: Vec<GateRef<F, D>>,
 
     /// Information on the circuit's selector polynomials.
