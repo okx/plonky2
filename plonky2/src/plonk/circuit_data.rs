@@ -19,7 +19,7 @@ use core::ops::{Range, RangeFrom};
 use std::collections::BTreeMap;
 
 use anyhow::Result;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::field::extension::Extendable;
 use crate::field::fft::FftRootTable;
@@ -55,7 +55,7 @@ use crate::util::timing::TimingTree;
 ///
 /// It supports a [`Default`] implementation tailored for recursion with Poseidon hash (of width 12)
 /// as internal hash function and FRI rate of 1/8.
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct CircuitConfig {
     /// The number of wires available at each row. This corresponds to the "width" of the circuit,
     /// and consists in the sum of routed wires and advice wires.
@@ -388,7 +388,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
 }
 
 /// Circuit data required by the verifier, but not the prover.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VerifierOnlyCircuitData<C: GenericConfig<D>, const D: usize> {
     /// A commitment to each constant polynomial and each permutation polynomial.
     pub constants_sigmas_cap: MerkleCap<C::F, C::Hasher>,
@@ -411,7 +411,8 @@ impl<C: GenericConfig<D>, const D: usize> VerifierOnlyCircuitData<C, D> {
 }
 
 /// Circuit data required by both the prover and the verifier.
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(bound = "")]
 pub struct CommonCircuitData<F: RichField + Extendable<D>, const D: usize> {
     pub config: CircuitConfig,
 
