@@ -136,7 +136,7 @@ impl GenericConfig<2> for PoseidonGoldilocksConfig {
 }
 
 /// Configuration using Poseidon over the Goldilocks field.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct Poseidon2GoldilocksConfig;
 impl GenericConfig<2> for Poseidon2GoldilocksConfig {
     type F = GoldilocksField;
