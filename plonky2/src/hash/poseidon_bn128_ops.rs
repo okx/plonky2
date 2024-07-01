@@ -4197,9 +4197,8 @@ impl ElementBN128 {
 
     #[inline]
     fn mul64trunc(self, a: u64, b: u64) -> u64 {
-        // let c128: u128 = (a as u128) * (b as u128);
-        // c128 as u64
-        a * b
+        let c128: u128 = (a as u128) * (b as u128);
+        c128 as u64
     }
 
     #[inline]
