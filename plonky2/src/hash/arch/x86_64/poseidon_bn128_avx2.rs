@@ -1,7 +1,6 @@
 use core::arch::x86_64::*;
 
 use crate::hash::poseidon_bn128_ops::{ElementBN128, C, M, P, S};
-
 #[cfg(feature = "papi")]
 use crate::util::papi::{init_papi, stop_papi};
 
@@ -799,8 +798,6 @@ fn print_state(state: &[ElementBN128; 5]) {
     println!();
 }
 
-
-
 pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
     #[cfg(feature = "papi")]
     let mut event_set = init_papi();
@@ -814,9 +811,24 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
     unsafe {
         // load states
         let mut inp: [__m256i; 4] = [
-            _mm256_set_epi64x(input[11] as i64, input[8] as i64, input[5] as i64, input[2] as i64),
-            _mm256_set_epi64x(input[10] as i64, input[7] as i64, input[4] as i64, input[1] as i64),
-            _mm256_set_epi64x(input[9] as i64, input[6] as i64, input[3] as i64, input[0] as i64),
+            _mm256_set_epi64x(
+                input[11] as i64,
+                input[8] as i64,
+                input[5] as i64,
+                input[2] as i64,
+            ),
+            _mm256_set_epi64x(
+                input[10] as i64,
+                input[7] as i64,
+                input[4] as i64,
+                input[1] as i64,
+            ),
+            _mm256_set_epi64x(
+                input[9] as i64,
+                input[6] as i64,
+                input[3] as i64,
+                input[0] as i64,
+            ),
             _mm256_set_epi64x(0i64, 0i64, 0i64, 0i64),
         ];
 

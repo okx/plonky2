@@ -8,16 +8,16 @@ use super::poseidon::PoseidonPermutation;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::Extendable;
 use crate::field::goldilocks_field::GoldilocksField;
+#[cfg(target_feature = "avx2")]
+use crate::hash::arch::x86_64::poseidon_bn128_avx2::permute_bn128_avx;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
+#[cfg(not(target_feature = "avx2"))]
+use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
-#[cfg(not(target_feature = "avx2"))]
-use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
-#[cfg(target_feature = "avx2")]
-use crate::hash::arch::x86_64::poseidon_bn128_avx2::permute_bn128_avx;
 
 #[derive(Copy, Clone, Default, Debug, PartialEq)]
 pub struct PoseidonBN128Permutation<F> {
@@ -151,18 +151,18 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
     fn permute(&mut self) {
         assert_eq!(SPONGE_WIDTH, 12);
         let su64: [u64; 12] = [
-                self.state[0].to_canonical_u64(),
-                self.state[1].to_canonical_u64(),
-                self.state[2].to_canonical_u64(),
-                self.state[3].to_canonical_u64(),
-                self.state[4].to_canonical_u64(),
-                self.state[5].to_canonical_u64(),
-                self.state[6].to_canonical_u64(),
-                self.state[7].to_canonical_u64(),
-                self.state[8].to_canonical_u64(),
-                self.state[9].to_canonical_u64(),
-                self.state[10].to_canonical_u64(),
-                self.state[11].to_canonical_u64(),
+            self.state[0].to_canonical_u64(),
+            self.state[1].to_canonical_u64(),
+            self.state[2].to_canonical_u64(),
+            self.state[3].to_canonical_u64(),
+            self.state[4].to_canonical_u64(),
+            self.state[5].to_canonical_u64(),
+            self.state[6].to_canonical_u64(),
+            self.state[7].to_canonical_u64(),
+            self.state[8].to_canonical_u64(),
+            self.state[9].to_canonical_u64(),
+            self.state[10].to_canonical_u64(),
+            self.state[11].to_canonical_u64(),
         ];
 
         #[cfg(not(target_feature = "avx2"))]
@@ -173,18 +173,18 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
         let out = permute_bn128_avx(su64);
 
         let permute_output = [
-                F::from_canonical_u64(out[0]),
-                F::from_canonical_u64(out[1]),
-                F::from_canonical_u64(out[2]),
-                F::from_canonical_u64(out[3]),
-                F::from_canonical_u64(out[4]),
-                F::from_canonical_u64(out[5]),
-                F::from_canonical_u64(out[6]),
-                F::from_canonical_u64(out[7]),
-                F::from_canonical_u64(out[8]),
-                F::from_canonical_u64(out[9]),
-                F::from_canonical_u64(out[10]),
-                F::from_canonical_u64(out[11]),
+            F::from_canonical_u64(out[0]),
+            F::from_canonical_u64(out[1]),
+            F::from_canonical_u64(out[2]),
+            F::from_canonical_u64(out[3]),
+            F::from_canonical_u64(out[4]),
+            F::from_canonical_u64(out[5]),
+            F::from_canonical_u64(out[6]),
+            F::from_canonical_u64(out[7]),
+            F::from_canonical_u64(out[8]),
+            F::from_canonical_u64(out[9]),
+            F::from_canonical_u64(out[10]),
+            F::from_canonical_u64(out[11]),
         ];
 
         self.set_from_slice(&permute_output, 0)
@@ -260,10 +260,9 @@ impl GenericConfig<2> for PoseidonBN128GoldilocksConfig {
 mod tests {
     use anyhow::Result;
     use plonky2_field::types::Field;
+
     use super::PoseidonBN128Hash;
-    use crate::plonk::config::{
-        GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig,
-    };
+    use crate::plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig};
 
     #[test]
     fn test_poseidon_bn128_hash_no_pad() -> Result<()> {

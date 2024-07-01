@@ -1,8 +1,7 @@
-#[cfg(feature = "papi")]
-use crate::util::papi::{init_papi, stop_papi};
-
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
+#[cfg(feature = "papi")]
+use crate::util::papi::{init_papi, stop_papi};
 
 #[allow(dead_code)]
 pub const RSQUARE: [u64; 4] = [

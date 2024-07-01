@@ -8,6 +8,10 @@ use core::fmt::Debug;
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
 use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
@@ -20,10 +24,6 @@ use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
-#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
-use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
-#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
-use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
 
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;

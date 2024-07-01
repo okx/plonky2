@@ -223,8 +223,8 @@ where
     unsafe {
         let mut r0 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
         let mut r1 = _mm512_loadu_si512((&mut result[4..12]).as_mut_ptr().cast::<i32>());
-        
-        for r in 1..12 {           
+
+        for r in 1..12 {
             let sr512 = _mm512_set_epi64(
                 state[r].to_canonical_u64() as i64,
                 state[r].to_canonical_u64() as i64,
@@ -322,19 +322,19 @@ where
             _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
             _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
 
-            *state = <F as Poseidon>::mds_layer(&state);            
+            *state = <F as Poseidon>::mds_layer(&state);
             round_ctr += 1;
-        }        
-        partial_first_constant_layer_avx(&mut state);        
+        }
+        partial_first_constant_layer_avx(&mut state);
         mds_partial_layer_init_avx(&mut state);
-        
+
         for i in 0..N_PARTIAL_ROUNDS {
             state[0] = sbox_monomial(state[0]);
             state[0] = state[0].add_canonical_u64(FAST_PARTIAL_ROUND_CONSTANTS[i]);
             *state = <F as Poseidon>::mds_partial_layer_fast(&state, i);
         }
         round_ctr += N_PARTIAL_ROUNDS;
-        
+
         // Self::full_rounds(&mut state, &mut round_ctr);
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state

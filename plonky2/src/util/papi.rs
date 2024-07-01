@@ -9,7 +9,5 @@ pub fn init_papi() -> EventsSet {
 
 pub fn stop_papi(event_set: &mut EventsSet, msg: &str) {
     let counters = event_set.stop().unwrap();
-    println!(
-        "No. of instructions {}: {}", msg, counters[0]
-    );
+    println!("No. of instructions {}: {}", msg, counters[0]);
 }
