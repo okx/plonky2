@@ -17,6 +17,9 @@ pub mod serialization;
 pub mod strided_view;
 pub mod timing;
 
+#[cfg(feature = "papi")]
+pub(crate) mod papi;
+
 pub(crate) fn transpose_poly_values<F: Field>(polys: Vec<PolynomialValues<F>>) -> Vec<Vec<F>> {
     let poly_values = polys.into_iter().map(|p| p.values).collect::<Vec<_>>();
     transpose(&poly_values)

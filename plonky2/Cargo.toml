@@ -25,6 +25,7 @@ cuda = ["cryptography_cuda/cuda"]
 no_cuda = ["cryptography_cuda/no_cuda"]
 batch = []
 cuda_timing = []
+papi = []
 
 [dependencies]
 ahash = { workspace = true }
@@ -41,6 +42,7 @@ static_assertions = { workspace = true }
 unroll = { workspace = true }
 web-time = { version = "1.0.0", optional = true }
 once_cell = { version = "1.18.0" }
+papi-bindings = { version = "0.5.2" }
 
 # Local dependencies
 plonky2_field = { version = "0.2.0", path = "../field", default-features = false }

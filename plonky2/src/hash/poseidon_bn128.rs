@@ -8,9 +8,13 @@ use super::poseidon::PoseidonPermutation;
 use crate::field::extension::quadratic::QuadraticExtension;
 use crate::field::extension::Extendable;
 use crate::field::goldilocks_field::GoldilocksField;
+#[cfg(target_feature = "avx2")]
+use crate::hash::arch::x86_64::poseidon_bn128_avx2::permute_bn128_avx;
 use crate::hash::hash_types::{HashOut, RichField};
 use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::hash::poseidon::{PoseidonHash, SPONGE_RATE, SPONGE_WIDTH};
+#[cfg(not(target_feature = "avx2"))]
+use crate::hash::poseidon_bn128_ops::PoseidonBN128NativePermutation;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::config::{AlgebraicHasher, GenericConfig, Hasher, HasherType};
@@ -56,6 +60,8 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
         }
     }
 
+    /*
+    // Go Wrapper - 33% slower than Rust version below
     fn permute(&mut self) {
         assert_eq!(SPONGE_WIDTH, 12);
         // println!("start permute............");
@@ -139,6 +145,49 @@ impl<F: RichField> PlonkyPermutation<F> for PoseidonBN128Permutation<F> {
             ];
             self.set_from_slice(&permute_output, 0)
         }
+    }
+    */
+
+    fn permute(&mut self) {
+        assert_eq!(SPONGE_WIDTH, 12);
+        let su64: [u64; 12] = [
+            self.state[0].to_canonical_u64(),
+            self.state[1].to_canonical_u64(),
+            self.state[2].to_canonical_u64(),
+            self.state[3].to_canonical_u64(),
+            self.state[4].to_canonical_u64(),
+            self.state[5].to_canonical_u64(),
+            self.state[6].to_canonical_u64(),
+            self.state[7].to_canonical_u64(),
+            self.state[8].to_canonical_u64(),
+            self.state[9].to_canonical_u64(),
+            self.state[10].to_canonical_u64(),
+            self.state[11].to_canonical_u64(),
+        ];
+
+        #[cfg(not(target_feature = "avx2"))]
+        let p: PoseidonBN128NativePermutation<F> = Default::default();
+        #[cfg(not(target_feature = "avx2"))]
+        let out = p.permute_fn(su64);
+        #[cfg(target_feature = "avx2")]
+        let out = permute_bn128_avx(su64);
+
+        let permute_output = [
+            F::from_canonical_u64(out[0]),
+            F::from_canonical_u64(out[1]),
+            F::from_canonical_u64(out[2]),
+            F::from_canonical_u64(out[3]),
+            F::from_canonical_u64(out[4]),
+            F::from_canonical_u64(out[5]),
+            F::from_canonical_u64(out[6]),
+            F::from_canonical_u64(out[7]),
+            F::from_canonical_u64(out[8]),
+            F::from_canonical_u64(out[9]),
+            F::from_canonical_u64(out[10]),
+            F::from_canonical_u64(out[11]),
+        ];
+
+        self.set_from_slice(&permute_output, 0)
     }
 
     fn squeeze(&self) -> &[F] {
@@ -255,7 +304,7 @@ mod tests {
             GenericHashOut::<F>::from_bytes(&left),
             GenericHashOut::<F>::from_bytes(&right),
         );
-        println!("output: {:?}", h);
+
         assert_eq!(h.elements[0].0, 5894400909438531414u64);
         assert_eq!(h.elements[1].0, 4814851992117646301u64);
         assert_eq!(h.elements[2].0, 17814584260098324190u64);
@@ -277,7 +326,7 @@ mod tests {
         v.push(F::from_canonical_u64(1441151880423231811u64));
 
         let h = PoseidonBN128Hash::hash_public_inputs(&v);
-        println!("out: {:?}", h);
+
         assert_eq!(h.elements[0].0, 2325439551141788444);
         assert_eq!(h.elements[1].0, 15244397589056680708);
         assert_eq!(h.elements[2].0, 5900587506047513594);
