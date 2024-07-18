@@ -8,6 +8,12 @@ use core::fmt::Debug;
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
+#[cfg(target_feature = "sve")]
+use super::arch::aarch64::poseidon_goldilocks_sve::poseidon_sve;
 use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
@@ -769,7 +775,7 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
-    #[cfg(not(target_feature = "avx2"))]
+    #[cfg(all(not(target_feature = "avx2"), not(target_feature = "sve")))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
@@ -792,6 +798,12 @@ pub trait Poseidon: PrimeField64 {
     #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         poseidon_avx512(&input)
+    }
+
+    #[inline]
+    #[cfg(target_feature = "sve")]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_sve(&input)
     }
 
     // For testing only, to ensure that various tricks are correct.
