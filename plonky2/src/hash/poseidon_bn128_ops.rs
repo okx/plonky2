@@ -1,8 +1,7 @@
-#[cfg(feature = "papi")]
-use crate::util::papi::{init_papi, stop_papi};
-
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
+#[cfg(feature = "papi")]
+use crate::util::papi::{init_papi, stop_papi};
 
 #[allow(dead_code)]
 pub const RSQUARE: [u64; 4] = [
@@ -4198,9 +4197,8 @@ impl ElementBN128 {
 
     #[inline]
     fn mul64trunc(self, a: u64, b: u64) -> u64 {
-        // let c128: u128 = (a as u128) * (b as u128);
-        // c128 as u64
-        a * b
+        let c128: u128 = (a as u128) * (b as u128);
+        c128 as u64
     }
 
     #[inline]
