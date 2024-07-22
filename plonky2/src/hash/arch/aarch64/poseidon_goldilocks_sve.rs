@@ -194,8 +194,8 @@ where
         "mul     z28.d, z31.d, z31.d",     // c_l
         // reduce
         "mov     z31.d, z29.d",
+        "lsr     z30.d, z31.d, #32",         // c_hh
         "and     z31.d, z31.d, #0xFFFFFFFF", // c_hl
-        "lsr     z30.d, z30.d, #32",         // c_hh
         "mov     z27.d, #-4294967295",       // GP
         "sub     z29.d, z28.d, z30.d",       // c_l - c_hh
         "cmphs   p6.d, p7/z, z28.d, z30.d",
@@ -214,8 +214,8 @@ where
         "mul     z28.d, z27.d, z27.d",     // c_l
         // reduce
         "mov     z31.d, z29.d",
+        "lsr     z30.d, z31.d, #32",         // c_hh
         "and     z31.d, z31.d, #0xFFFFFFFF", // c_hl
-        "lsr     z30.d, z30.d, #32",         // c_hh
         "mov     z27.d, #-4294967295",       // GP
         "sub     z28.d, z28.d, z30.d",       // c_l - c_hh
         "cmphs   p6.d, p7/z, z28.d, z30.d",
@@ -269,11 +269,12 @@ where
         p0 = inout(reg) state_ptr,
         r0 = in(reg) rc_ptr,
     );
+
     assert_ne!(x, *state_ptr);
 }
 
 #[inline(always)]
-unsafe fn add_sbox_all<F>(state: &mut [F; 12], rc: &[u64; 12])
+unsafe fn add_sbox_all_256<F>(state: &mut [F; 12], rc: &[u64; 12])
 where
     F: PrimeField64 + Poseidon,
 {
@@ -336,6 +337,93 @@ where
     F::sbox_layer(state);
 }
 
+#[inline(always)]
+unsafe fn add_sbox_all_128<F>(state: &mut [F; 12], rc: &[u64; 12])
+where
+    F: PrimeField64 + Poseidon,
+{
+    let mut state_ptr_0 = (state[0..2]).as_mut_ptr();
+    let mut state_ptr_1 = (state[2..4]).as_mut_ptr();
+    let mut state_ptr_2 = (state[4..6]).as_mut_ptr();
+    let mut state_ptr_3 = (state[6..8]).as_mut_ptr();
+    let mut state_ptr_4 = (state[8..10]).as_mut_ptr();
+    let mut state_ptr_5 = (state[10..12]).as_mut_ptr();
+    let rc_ptr_0 = (rc[0..2]).as_ptr();
+    let rc_ptr_1 = (rc[2..4]).as_ptr();
+    let rc_ptr_2 = (rc[4..6]).as_ptr();
+    let rc_ptr_3 = (rc[6..8]).as_ptr();
+    let rc_ptr_4 = (rc[8..10]).as_ptr();
+    let rc_ptr_5 = (rc[10..12]).as_ptr();
+
+    asm!(
+        // add
+        "ptrue   p7.b, all",
+        "ld1d    z10.d, p7/z, [{p0}]",
+        "ld1d    z11.d, p7/z, [{p1}]",
+        "ld1d    z12.d, p7/z, [{p2}]",
+        "ld1d    z13.d, p7/z, [{p3}]",
+        "ld1d    z14.d, p7/z, [{p4}]",
+        "ld1d    z15.d, p7/z, [{p5}]",
+        "ld1d    z20.d, p7/z, [{r0}]",
+        "ld1d    z21.d, p7/z, [{r1}]",
+        "ld1d    z22.d, p7/z, [{r2}]",
+        "ld1d    z23.d, p7/z, [{r3}]",
+        "ld1d    z24.d, p7/z, [{r4}]",
+        "ld1d    z25.d, p7/z, [{r5}]",
+        "mov     z30.d, #4294967295",
+        "mov     z16.d, #-4294967295",
+        "mov     z17.d, #-4294967295",
+        "mov     z18.d, #-4294967295",
+        "mov     z26.d, #-4294967295",
+        "mov     z27.d, #-4294967295",
+        "mov     z28.d, #-4294967295",
+        "sub     z16.d, z16.d, z10.d",
+        "sub     z17.d, z17.d, z11.d",
+        "sub     z18.d, z18.d, z12.d",
+        "sub     z26.d, z26.d, z13.d",
+        "sub     z27.d, z27.d, z14.d",
+        "sub     z28.d, z28.d, z15.d",
+        "add     z10.d, z10.d, z20.d",
+        "add     z11.d, z11.d, z21.d",
+        "add     z12.d, z12.d, z22.d",
+        "add     z13.d, z13.d, z23.d",
+        "add     z14.d, z14.d, z24.d",
+        "add     z15.d, z15.d, z25.d",
+        "cmphi   p0.d, p7/z, z20.d, z16.d",
+        "cmphi   p1.d, p7/z, z21.d, z17.d",
+        "cmphi   p2.d, p7/z, z22.d, z18.d",
+        "cmphi   p3.d, p7/z, z23.d, z26.d",
+        "cmphi   p4.d, p7/z, z24.d, z27.d",
+        "cmphi   p5.d, p7/z, z25.d, z28.d",
+        "add     z10.d, p0/m, z10.d, z30.d",
+        "add     z11.d, p1/m, z11.d, z30.d",
+        "add     z12.d, p2/m, z12.d, z30.d",
+        "add     z13.d, p3/m, z13.d, z30.d",
+        "add     z14.d, p4/m, z14.d, z30.d",
+        "add     z15.d, p5/m, z15.d, z30.d",
+        "st1d    z10.d, p7, [{p0}]",
+        "st1d    z11.d, p7, [{p1}]",
+        "st1d    z12.d, p7, [{p2}]",
+        "st1d    z13.d, p7, [{p3}]",
+        "st1d    z14.d, p7, [{p4}]",
+        "st1d    z15.d, p7, [{p5}]",
+        p0 = inout(reg) state_ptr_0,
+        p1 = inout(reg) state_ptr_1,
+        p2 = inout(reg) state_ptr_2,
+        p3 = inout(reg) state_ptr_3,
+        p4 = inout(reg) state_ptr_4,
+        p5 = inout(reg) state_ptr_5,
+        r0 = in(reg) rc_ptr_0,
+        r1 = in(reg) rc_ptr_1,
+        r2 = in(reg) rc_ptr_2,
+        r3 = in(reg) rc_ptr_3,
+        r4 = in(reg) rc_ptr_4,
+        r5 = in(reg) rc_ptr_5,
+    );
+
+    F::sbox_layer(state);
+}
+
 pub fn poseidon_sve<F>(input: &[F; SPONGE_WIDTH]) -> [F; SPONGE_WIDTH]
 where
     F: PrimeField64 + Poseidon,
@@ -357,11 +445,20 @@ where
             // let pr1 = (rc[4..8]).as_ptr();
             // let pr2 = (rc[8..12]).as_ptr();
 
-            add_sbox_sve_256(state, rc, 0);
-            add_sbox_sve_256(state, rc, 4);
-            add_sbox_sve_256(state, rc, 8);
+            // add_sbox_sve_256(state, rc, 0);
+            // add_sbox_sve_256(state, rc, 4);
+            // add_sbox_sve_256(state, rc, 8);
 
-            // add_sbox_all(state, rc);
+            add_sbox_sve2_128(state, rc, 0);
+            add_sbox_sve2_128(state, rc, 2);
+            add_sbox_sve2_128(state, rc, 4);
+            add_sbox_sve2_128(state, rc, 6);
+            add_sbox_sve2_128(state, rc, 8);
+            add_sbox_sve2_128(state, rc, 10);
+
+            // add_sbox_all_256(state, rc);
+
+            // add_sbox_all_128(state, rc);
 
             *state = F::mds_layer(state);
             round_ctr += 1;
@@ -385,11 +482,20 @@ where
             // let pr1 = (rc[4..8]).as_ptr();
             // let pr2 = (rc[8..12]).as_ptr();
 
-            add_sbox_sve_256(state, rc, 0);
-            add_sbox_sve_256(state, rc, 4);
-            add_sbox_sve_256(state, rc, 8);
+            // add_sbox_sve_256(state, rc, 0);
+            // add_sbox_sve_256(state, rc, 4);
+            // add_sbox_sve_256(state, rc, 8);
 
-            // add_sbox_all(state, rc);
+            add_sbox_sve2_128(state, rc, 0);
+            add_sbox_sve2_128(state, rc, 2);
+            add_sbox_sve2_128(state, rc, 4);
+            add_sbox_sve2_128(state, rc, 6);
+            add_sbox_sve2_128(state, rc, 8);
+            add_sbox_sve2_128(state, rc, 10);
+
+            // add_sbox_all_256(state, rc);
+
+            // add_sbox_all_128(state, rc);
 
             *state = F::mds_layer(state);
             round_ctr += 1;
