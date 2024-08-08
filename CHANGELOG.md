@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.3] - 2024-04-16
+
+- Code refactoring ([#1558](https://github.com/0xPolygonZero/plonky2/pull/1558))
+- Simplify types: remove option from CTL filters ([#1567](https://github.com/0xPolygonZero/plonky2/pull/1567))
+- Add stdarch_x86_avx512 feature ([#1566](https://github.com/0xPolygonZero/plonky2/pull/1566))
+
 ## [0.2.2] - 2024-03-21
 
 ### Changed
