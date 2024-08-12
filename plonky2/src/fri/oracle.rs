@@ -99,7 +99,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let merkle_tree = timed!(
             timing,
             "build Merkle tree",
-            MerkleTree::new(leaves, cap_height)
+            MerkleTree::new_from_2d(leaves, cap_height)
         );
 
         Self {
@@ -142,7 +142,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     pub fn get_lde_values(&self, index: usize, step: usize) -> &[F] {
         let index = index * step;
         let index = reverse_bits(index, self.degree_log + self.rate_bits);
-        let slice = &self.merkle_tree.leaves[index];
+        let slice = &self.merkle_tree.get(index);
         &slice[..slice.len() - if self.blinding { SALT_SIZE } else { 0 }]
     }
 

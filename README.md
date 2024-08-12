@@ -1,8 +1,15 @@
 # Plonky2 & more
 [![Discord](https://img.shields.io/discord/743511677072572486?logo=discord)](https://discord.gg/QZKRUpqCJ6)
 
-This repository was originally for Plonky2, a SNARK implementation based on techniques from PLONK and FRI. It has since expanded to include tools such as Starky, a highly performant STARK implementation.
+This repo is a fork of https://github.com/0xPolygonZero/plonky2. To boost speed, several optimizations were implemented:
 
+# Optimizations
+- Precompute FFT twiddle factors.
+- CUDA implementation of Goldilocks Field NTT (feature `cuda`).
+- CUDA implementation of Poseidon (Goldilocks) and Poseidon (BN 128) (feature `cuda`).
+- Fixed the AVX implementation for Poseidon (Goldilocks) (target CPU must support AVX2).
+- CUDA implementation of Merkle Tree building (feature `cuda`).
+- Change Merkle Tree structure from recursive to iterative (1-dimensional vector).
 
 ## Documentation
 
@@ -38,6 +45,10 @@ rustup override set nightly
 in the Plonky2 directory.
 
 
+```
+git submodule update --init --recursive
+```
+
 ## Running
 
 To see recursion performance, one can run this bench, which generates a chain of three recursion proofs:
@@ -59,6 +70,43 @@ static GLOBAL: Jemalloc = Jemalloc;
 ```
 
 Jemalloc is known to cause crashes when a binary compiled for x86 is run on an Apple silicon-based Mac under [Rosetta 2](https://support.apple.com/en-us/HT211861). If you are experiencing crashes on your Apple silicon Mac, run `rustc --print target-libdir`. The output should contain `aarch64-apple-darwin`. If the output contains `x86_64-apple-darwin`, then you are running the Rust toolchain for x86; we recommend switching to the native ARM version.
+
+## Benchmarking Merkle Tree building with Poseison hash
+
+Set the latest Rust nightly:
+```
+rustup update
+rustup override set nightly-x86_64-unknown-linux-gnu
+```
+
+CPU, no AVX: ``cargo bench merkle``
+
+CPU with AVX2: ``RUSTFLAGS="-C target-feature=+avx2" cargo bench merkle``
+
+CPU with AVX512: ``RUSTFLAGS="-C target-feature=+avx512dq" cargo bench merkle``
+
+GPU (CUDA): ``cargo bench merkle --features=cuda``
+
+### Results
+
+The results in the table below represent the build time (in milliseconds) of a Merkle Tree with the indicated number of leaves (first row) using the hashing method indicated in the first column. The systems used for benchmarking are:
+
+- first three columns: AMD Ryzen Threadripper PRO 5975WX 32-Cores (only AVX2) + NVIDIA RTX 4090 (feature `cuda`);
+
+- last three columns: AMD Ryzen 9 7950X 16-Core (AVX2 and AVX512DQ).
+
+
+| Number of MT Leaves | 2^13  | 2^14  | 2^15  |   | 2^13  | 2^14  | 2^15 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Poseidon (no AVX)                     | 12.4  | 23.4  | 46.6  |                                       | 12.8  | 25.2  | 50.3  |
+| Poseidon (AVX)                        | 11.4  | 21.3  | 39.2  |                                       | 10.3  | 20.3  | 40.2  |
+| Poseidon (AVX512)                     |  -     |  -     | -   |                                       | 12.3  | 24.1  | 47.8  |
+| Poseidon (GPU)                        | 8     | 14.3  | 26.5  |                                       |    -   | -      |  -     |
+| Poseidon BN 128 (no AVX)              | 111.9 | 223   | 446.3 |                                       | 176.9 | 351   | 699.1 |
+| Poseidon BN 128 (AVX)                 | 146.8 | 291.7 | 581.8 |                                       | 220.1 | 433.5 | 858.8 |
+| Poseidon BN 128 (AVX512)              |    -   |    -   |   -    |                                       | WIP   | WIP   | WIP   |
+| Poseidon BN 128 (GPU)                 | 37.5  | 57.6  | 92.9  |                                        | - | - | - |
+
 
 ## Contributing guidelines
 

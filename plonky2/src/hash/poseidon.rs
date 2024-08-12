@@ -8,6 +8,11 @@ use core::fmt::Debug;
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
+use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
 use crate::gates::gate::Gate;
@@ -18,7 +23,7 @@ use crate::hash::hashing::{compress, hash_n_to_hash_no_pad, PlonkyPermutation};
 use crate::iop::ext_target::ExtensionTarget;
 use crate::iop::target::{BoolTarget, Target};
 use crate::plonk::circuit_builder::CircuitBuilder;
-use crate::plonk::config::{AlgebraicHasher, Hasher};
+use crate::plonk::config::{AlgebraicHasher, Hasher, HasherType};
 
 pub const SPONGE_RATE: usize = 8;
 pub const SPONGE_CAPACITY: usize = 4;
@@ -37,14 +42,14 @@ pub const N_ROUNDS: usize = N_FULL_ROUNDS_TOTAL + N_PARTIAL_ROUNDS;
 const MAX_WIDTH: usize = 12; // we only have width 8 and 12, and 12 is bigger. :)
 
 #[inline(always)]
-const fn add_u160_u128((x_lo, x_hi): (u128, u32), y: u128) -> (u128, u32) {
+pub(crate) const fn add_u160_u128((x_lo, x_hi): (u128, u32), y: u128) -> (u128, u32) {
     let (res_lo, over) = x_lo.overflowing_add(y);
     let res_hi = x_hi + (over as u32);
     (res_lo, res_hi)
 }
 
 #[inline(always)]
-fn reduce_u160<F: PrimeField64>((n_lo, n_hi): (u128, u32)) -> F {
+pub(crate) fn reduce_u160<F: PrimeField64>((n_lo, n_hi): (u128, u32)) -> F {
     let n_lo_hi = (n_lo >> 64) as u64;
     let n_lo_lo = n_lo as u64;
     let reduced_hi: u64 = F::from_noncanonical_u96((n_lo_hi, n_hi)).to_noncanonical_u64();
@@ -764,6 +769,7 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
+    #[cfg(not(target_feature = "avx2"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
@@ -774,6 +780,18 @@ pub trait Poseidon: PrimeField64 {
         debug_assert_eq!(round_ctr, N_ROUNDS);
 
         state
+    }
+
+    #[inline]
+    #[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_avx(&input)
+    }
+
+    #[inline]
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_avx512(&input)
     }
 
     // For testing only, to ensure that various tricks are correct.
@@ -873,12 +891,17 @@ impl<T: Copy + Debug + Default + Eq + Permuter + Send + Sync> PlonkyPermutation<
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct PoseidonHash;
 impl<F: RichField> Hasher<F> for PoseidonHash {
+    const HASHER_TYPE: HasherType = HasherType::Poseidon;
     const HASH_SIZE: usize = 4 * 8;
     type Hash = HashOut<F>;
     type Permutation = PoseidonPermutation<F>;
 
     fn hash_no_pad(input: &[F]) -> Self::Hash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
+    }
+
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
     }
 
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
@@ -916,6 +939,16 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
         Self::AlgebraicPermutation::new(
             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
         )
+    }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        HashOutTarget::from_vec(builder.hash_n_to_m_no_pad::<PoseidonHash>(inputs, 4))
     }
 }
 
