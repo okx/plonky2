@@ -321,21 +321,22 @@ pub trait Read {
         H: Hasher<F>,
     {
         let leaves_len = self.read_usize()?;
-        let mut leaves = Vec::with_capacity(leaves_len);
+        let leaf_len = self.read_usize()?;
+        let mut leaves_2d = Vec::with_capacity(leaves_len * leaf_len);
         for _ in 0..leaves_len {
-            let leaf_len = self.read_usize()?;
-            leaves.push(self.read_field_vec(leaf_len)?);
+            // let leaf_len = self.read_usize()?;
+            leaves_2d.push(self.read_field_vec(leaf_len)?);
         }
+
+        let leaves_1d = leaves_2d.into_iter().flatten().collect();
 
         let digests_len = self.read_usize()?;
         let digests = self.read_hash_vec::<F, H>(digests_len)?;
         let cap_height = self.read_usize()?;
         let cap = self.read_merkle_cap::<F, H>(cap_height)?;
-        Ok(MerkleTree {
-            leaves,
-            digests,
-            cap,
-        })
+        Ok(MerkleTree::new_from_fields(
+            leaves_1d, leaf_len, digests, cap,
+        ))
     }
 
     /// Reads a value of type [`OpeningSet`] from `self` with the given `common_data`.
@@ -1419,10 +1420,12 @@ pub trait Write {
         F: RichField,
         H: Hasher<F>,
     {
-        self.write_usize(tree.leaves.len())?;
-        for i in 0..tree.leaves.len() {
-            self.write_usize(tree.leaves[i].len())?;
-            self.write_field_vec(&tree.leaves[i])?;
+        let leaves_count = tree.get_leaves_count();
+        self.write_usize(leaves_count)?;
+        self.write_usize(tree.leaf_size)?;
+        for i in 0..leaves_count {
+            // self.write_usize(tree.leaf_size)?;
+            self.write_field_vec(&tree.get(i))?;
         }
         self.write_hash_vec::<F, H>(&tree.digests)?;
         self.write_usize(tree.cap.height())?;
