@@ -9,7 +9,7 @@ use plonky2_field::goldilocks_field::GoldilocksField;
 use super::arch::x86_64::goldilocks_avx2::sbox_avx;
 #[cfg(target_feature = "avx2")]
 use super::arch::x86_64::poseidon2_goldilocks_avx2::{
-    add_rc_avx, internal_layer_avx, matmul_internal_avx, permute_mut_avx,
+    add_rc_avx, internal_layer_avx, permute_mut_avx,
 };
 use super::hash_types::{HashOutTarget, NUM_HASH_OUT_ELTS};
 use crate::field::extension::Extendable;
@@ -389,9 +389,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct DiffusionMatrixGoldilocks;
-
 pub fn matmul_internal<F: RichField>(
     state: &mut [F; SPONGE_WIDTH],
     mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
@@ -400,18 +397,6 @@ pub fn matmul_internal<F: RichField>(
     for i in 0..SPONGE_WIDTH {
         state[i] *= F::from_canonical_u64(mat_internal_diag_m_1[i]);
         state[i] += sum.clone();
-    }
-}
-
-impl<F: RichField> P2Permutation<[F; 12]> for DiffusionMatrixGoldilocks {
-    #[cfg(not(target_feature = "avx2"))]
-    fn permute_mut(&self, state: &mut [F; 12]) {
-        matmul_internal::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
-    }
-
-    #[cfg(target_feature = "avx2")]
-    fn permute_mut(&self, state: &mut [F; 12]) {
-        matmul_internal_avx::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
     }
 }
 
