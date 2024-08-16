@@ -436,6 +436,37 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     print_time(now, "copy results");
 }
 
+#[cfg(feature = "avx512")]
+fn fill_digests_buf_avx512<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
+    cap_height: usize,
+) {
+    use crate::{fill_digests_buf_linear_cpu_avx512, plonk::config::HasherType};
+
+    let leaves_count = leaves.len() / leaf_size;
+    let digests_count: u64 = digests_buf.len().try_into().unwrap();
+    let caps_count: u64 = cap_buf.len().try_into().unwrap();
+
+    let now = Instant::now();
+    unsafe {
+    fill_digests_buf_linear_cpu_avx512(
+        digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+        cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+        leaves.as_ptr() as *mut core::ffi::c_void,
+        digests_count,
+        caps_count,
+        leaves_count as u64,
+        leaf_size as u64,
+        cap_height as u64,
+        HasherType::Poseidon as u64
+        );
+    }
+    print_time(now, "fill_digests_buf_avx512");
+}
+
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
@@ -452,7 +483,24 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     }
 }
 
-#[cfg(not(feature = "cuda"))]
+#[cfg(feature = "avx512")]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
+    cap_height: usize,
+) {
+    // if the input is small or if it Keccak hashing, just do the hashing on CPU
+    use crate::plonk::config::HasherType;
+    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE != HasherType::Poseidon {
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
+    } else {
+        fill_digests_buf_avx512::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
+    }
+}
+
+#[cfg(all(not(feature = "cuda"), not(feature = "avx512")))]
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
@@ -1163,9 +1211,9 @@ mod tests {
         #[cfg(feature = "cuda")]
         let _x: HostOrDeviceSlice<'_, F> = HostOrDeviceSlice::cuda_malloc(0, 64).unwrap();
 
-        let log_n = 12;
+        let log_n = 10;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data::<F>(n, 84);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 

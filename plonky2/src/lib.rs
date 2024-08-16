@@ -8,6 +8,9 @@
 // #[cfg(not(feature = "std"))]
 pub extern crate alloc;
 
+#[cfg(feature = "avx512")]
+include!("../merkle_avx512/bindings.rs");
+
 /// Re-export of `plonky2_field`.
 #[doc(inline)]
 pub use plonky2_field as field;

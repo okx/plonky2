@@ -26,6 +26,7 @@ no_cuda = ["cryptography_cuda/no_cuda"]
 batch = []
 cuda_timing = []
 papi = []
+avx512 = []
 
 [dependencies]
 ahash = { workspace = true }
@@ -55,7 +56,7 @@ dyn-clone = "1.0.17"
 getrandom = { version = "0.2", default-features = false, features = ["js"] }
 
 [build-dependencies]
-bindgen = { version = "0.68.1" }
+bindgen = { version = "0.69.4" }
 
 [dev-dependencies]
 criterion = { version = "0.5.1", default-features = false }
