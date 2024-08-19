@@ -7,12 +7,15 @@ use std::process::Command;
 fn merkle_avx512() {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let mdir = Path::new(&dir).join("merkle_avx512");
+    let lib_file = mdir.join("merkle_avx512.a");
 
-    assert!(env::set_current_dir(&mdir).is_ok());
-    Command::new("make")
-        .output()
-        .expect("failed to execute make");
+    if !lib_file.exists() {
+        assert!(env::set_current_dir(&mdir).is_ok());
+        Command::new("make")
+            .output()
+            .expect("failed to execute make");
         assert!(env::set_current_dir(&dir).is_ok());
+    }
 
     // Tell cargo to look for shared libraries in the specified directory
     println!("cargo:rustc-link-search={}", mdir.display());
@@ -21,7 +24,9 @@ fn merkle_avx512() {
     // Tell cargo to tell rustc to link the system bzip2
     // shared library.
     // println!("cargo:rustc-link-lib=cmerkle-poseidon-rust");
-    println!("cargo:rustc-link-lib=merkle_avx512");
+    println!("cargo:rustc-link-lib=static=merkle_avx512");
+    println!("cargo:rustc-link-lib=gomp");
+    println!("cargo:rustc-link-lib=stdc++");
 
     // Tell cargo to invalidate the built crate whenever the wrapper changes
     println!("cargo:rerun-if-changed={}/merkle.h", mdir.display());

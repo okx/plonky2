@@ -164,7 +164,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         }
     }
 
-    #[cfg(not(feature = "cuda"))]
+    // #[cfg(not(feature = "cuda"))]
     pub fn from_coeffs(
         polynomials: Vec<PolynomialCoeffs<F>>,
         rate_bits: usize,
@@ -184,7 +184,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     }
 
     #[cfg(feature = "cuda")]
-    pub fn from_coeffs(
+    pub fn from_coeffs_cuda(
         polynomials: Vec<PolynomialCoeffs<F>>,
         rate_bits: usize,
         blinding: bool,
@@ -335,6 +335,34 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     }
 
     fn lde_values(
+        polynomials: &[PolynomialCoeffs<F>],
+        rate_bits: usize,
+        blinding: bool,
+        fft_root_table: Option<&FftRootTable<F>>,
+    ) -> Vec<Vec<F>> {
+        let degree = polynomials[0].len();
+
+        // If blinding, salt with two random elements to each leaf vector.
+        let salt_size = if blinding { SALT_SIZE } else { 0 };
+
+        polynomials
+            .par_iter()
+            .map(|p| {
+                assert_eq!(p.len(), degree, "Polynomial degrees inconsistent");
+                p.lde(rate_bits)
+                    .coset_fft_with_options(F::coset_shift(), Some(rate_bits), fft_root_table)
+                    .values
+            })
+            .chain(
+                (0..salt_size)
+                    .into_par_iter()
+                    .map(|_| F::rand_vec(degree << rate_bits)),
+            )
+            .collect()
+    }
+
+    #[allow(dead_code)]
+    fn lde_values_cuda(
         polynomials: &[PolynomialCoeffs<F>],
         rate_bits: usize,
         blinding: bool,
