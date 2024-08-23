@@ -7,8 +7,14 @@
 #[cfg(not(all(target_arch = "aarch64", target_feature = "neon")))]
 use plonky2_field::types::Field;
 
+use core::fmt::Debug;
+
 use crate::field::goldilocks_field::GoldilocksField;
-use crate::hash::poseidon::{Poseidon, N_PARTIAL_ROUNDS};
+use crate::hash::poseidon::{Poseidon, PoseidonPermutation, N_PARTIAL_ROUNDS};
+use crate::hash::hashing::PlonkyPermutation;
+
+use super::hash_types::RichField;
+use super::poseidon::PoseidonHash;
 
 #[rustfmt::skip]
 impl Poseidon for GoldilocksField {
@@ -442,6 +448,21 @@ mod poseidon12_mds {
     }
 }
 
+pub trait PoseidonGoldHasher<F: RichField>: Sized + Copy + Debug + Eq + PartialEq {
+    fn hash12(input: &[F; 12]) -> [F; 4];
+}
+
+impl<F: RichField> PoseidonGoldHasher<F> for PoseidonHash {
+    fn hash12(input: &[F; 12]) -> [F; 4] {
+        let mut perm = PoseidonPermutation::<F>::new(core::iter::repeat(F::ZERO));
+        perm.set_from_slice(input, 0);
+        perm.permute();
+        let state = perm.squeeze();
+        let output: [F; 4] = [state[0], state[1], state[2], state[3]];
+        output
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(not(feature = "std"))]
@@ -450,6 +471,9 @@ mod tests {
     use crate::field::goldilocks_field::GoldilocksField as F;
     use crate::field::types::{Field, PrimeField64};
     use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors};
+    use crate::hash::poseidon::PoseidonHash;
+    use crate::hash::poseidon_goldilocks::PoseidonGoldHasher;
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
 
     #[test]
     fn test_vectors() {
@@ -492,5 +516,44 @@ mod tests {
     #[test]
     fn consistency() {
         check_consistency::<F>();
+    }
+
+    #[test]
+    fn test_hash12() {
+        let inputs: [[u64; 8]; 9] = [
+            [0, 0, 0, 0, 0, 0, 0, 0],
+            [5577006791947779410, 8674665223082153551, 15352856648520921629, 13260572831089785859, 3916589616287113937, 6334824724549167320, 9828766684487745566, 10667007354186551956],
+            [894385949183117216, 11998794077335055257, 4751997750760398084, 7504504064263669287, 11199607447739267382, 3510942875414458836, 12156940908066221323, 4324745483838182873],
+            [11833901312327420776, 11926759511765359899, 6263450610539110790, 11239168150708129139, 1874068156324778273, 3328451335138149956, 14486903973548550719, 7955079406183515637],
+            [11926873763676642186, 2740103009342231109, 6941261091797652072, 1905388747193831650, 17204678798284737396, 15649472107743074779, 4831389563158288344, 261049867304784443],
+            [10683692646452562431, 5600924393587988459, 18218388313430417611, 9956202364908137547, 5486140987150761883, 9768663798983814715, 6382800227808658932, 2781055864473387780],
+            [10821471013040158923, 4990765271833742716, 14242321332569825828, 11792151447964398879, 13126262220165910460, 14117161486975057715, 2338498362660772719, 2601737961087659062],
+            [7273596521315663110, 3337066551442961397, 17344948852394588913, 11963748953446345529, 8249030965139585917, 898860202204764712, 9010467728050264449, 9908585559158765387],
+            [11273630029763932141, 15505210698284655633, 2227583514184312746, 12096659438561119542, 8603989663476771718, 6842348953158377901, 7388428680384065704, 6735196588112087610],
+        ];
+
+        let expected_result: [[u64; 4]; 9] = [
+            [4330397376401421145, 14124799381142128323, 8742572140681234676, 14345658006221440202],
+            [7986352640330579808, 16698976638447200418, 14099060853601989680, 1806029100513259151], [4912038160490892692, 4103686885524875147, 10541378107520313959, 17279065624757782690],
+            [7890399244011379224, 3893786354640587971, 13560196409483468805, 2948784903943663078],  [14700294369684741534, 14895735373969203815, 16434826207003907392, 17867437290801947189],
+            [17625602373883346164, 18149609703473926001, 2824810185344003270, 9975387089464755098], [2691796281516679790, 14584425213549820217, 14318483276994184927, 17940735015359233298],
+            [8150678766998536923, 14721645535435562842, 2012097115710913290, 6143064933387483688],  [9286804905202849659, 7450030268744143082, 2587697138684996149, 603260420412321806],
+        ];
+
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<2>>::F;
+
+        for k in 0..inputs.len() {
+            let mut input = [F::ZERO; 12];
+            for i in 0..8 {
+                input[i] = F::from_canonical_u64(inputs[k][i]);
+            }
+            let output = PoseidonHash::hash12(&input);
+            for i in 0..4 {
+                let ex_output = F::from_canonical_u64(expected_result[k][i]);
+                assert_eq!(output[i], ex_output);
+            }
+        }
+        println!("test PoseidonGold12 done ok.")
     }
 }
