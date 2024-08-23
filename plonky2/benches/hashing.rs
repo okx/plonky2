@@ -35,7 +35,7 @@ pub(crate) fn bench_poseidon<F: Poseidon>(c: &mut Criterion) {
 
 pub(crate) fn bench_poseidongold12<F: RichField, H: PoseidonGoldHasher<F>>(c: &mut Criterion) {
     c.bench_function(
-        &format!("poseidon<{}, {SPONGE_WIDTH}>", type_name::<F>()),
+        &format!("poseidongold12<{}, {SPONGE_WIDTH}>", type_name::<F>()),
         |b| {
             b.iter_batched(
                 || F::rand_array::<12>(),
