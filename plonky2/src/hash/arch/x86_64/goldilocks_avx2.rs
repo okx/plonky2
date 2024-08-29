@@ -251,6 +251,7 @@ pub fn sqr_avx(a: &__m256i) -> __m256i {
     reduce_avx_128_64(&c_h, &c_l)
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 pub fn sbox_avx<F>(state: &mut [F; 12])
 where

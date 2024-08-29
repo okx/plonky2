@@ -3,7 +3,6 @@ use core::arch::x86_64::*;
 use unroll::unroll_for_loops;
 
 use super::goldilocks_avx2::{mul64_no_overflow, mult_avx_128, reduce_avx_96_64};
-use super::poseidon_bn128_avx2::add64_no_carry;
 use crate::field::types::PrimeField64;
 use crate::hash::arch::x86_64::goldilocks_avx2::{
     add_avx, mult_avx, reduce_avx_128_64, sbox_avx_m256i,
@@ -821,6 +820,47 @@ const FAST_PARTIAL_ROUND_VS: [[u64; 12]; N_PARTIAL_ROUNDS] = [
 const MDS_FREQ_BLOCK_ONE: [i64; 3] = [16, 32, 16];
 const MDS_FREQ_BLOCK_TWO: [(i64, i64); 3] = [(2, -1), (-4, 1), (16, 1)];
 const MDS_FREQ_BLOCK_THREE: [i64; 3] = [-1, -8, 2];
+
+#[inline]
+pub unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
+    /*
+     * a and b are signed 4 x i64. Suppose a and b represent only one i64, then:
+     * - (test 1): if a < 2^63 and b < 2^63 (this means a >= 0 and b >= 0) => sum does not overflow => cout = 0
+     * - if a >= 2^63 and b >= 2^63 => sum overflows so sum = a + b and cout = 1
+     * - (test 2): if (a < 2^63 and b >= 2^63) or (a >= 2^63 and b < 2^63)
+     *   - (test 3): if a + b < 2^64 (this means a + b is negative in signed representation) => no overflow so cout = 0
+     *   - (test 3): if a + b >= 2^64 (this means a + b becomes positive in signed representation, that is, a + b >= 0) => there is overflow so cout = 1
+     */
+
+    /*
+    let ones = _mm256_set_epi64x(1, 1, 1, 1);
+    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
+    let r = _mm256_add_epi64(*a, *b);
+    let ma = _mm256_cmpgt_epi64(zeros, *a);
+    let mb = _mm256_cmpgt_epi64(zeros, *b);
+    let m1 = _mm256_and_si256(ma, mb); // test 1
+    let m21 = _mm256_andnot_si256(ma, mb);
+    let m22 = _mm256_andnot_si256(mb, ma);
+    let m2 = _mm256_or_si256(m21, m22); // test 2
+    let m23 = _mm256_cmpgt_epi64(zeros, r); // test 3
+    let m2 = _mm256_andnot_si256(m23, m2);
+    let m = _mm256_or_si256(m1, m2);
+    let co = _mm256_and_si256(m, ones);
+    (r, co)
+    */
+    let ones = _mm256_set_epi64x(1, 1, 1, 1);
+    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
+    let r = _mm256_add_epi64(*a, *b);
+    let ma = _mm256_cmpgt_epi64(zeros, *a);
+    let mb = _mm256_cmpgt_epi64(zeros, *b);
+    let m1 = _mm256_and_si256(ma, mb); // test 1
+    let m2 = _mm256_xor_si256(ma, mb); // test 2
+    let m23 = _mm256_cmpgt_epi64(zeros, r); // test 3
+    let m2 = _mm256_andnot_si256(m23, m2);
+    let m = _mm256_or_si256(m1, m2);
+    let co = _mm256_and_si256(m, ones);
+    (r, co)
+}
 
 #[allow(dead_code)]
 #[inline(always)]

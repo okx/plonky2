@@ -712,4 +712,20 @@ mod tests {
         println!("Time in s is: {:?}", tdiff as f64 / (1000000000 as f64));
         println!("Time per hash in ns is: {:?}", tdiff as f64 / (REPS as f64));
     }
+
+    #[test]
+    fn test_fibo() {
+        let mut input = [F::ZERO; 12];
+        input[1] = F::ONE;
+        for i in 2..12 {
+            input[i] = input[i-2] + input[i-1];
+        }
+
+        let output = PoseidonHash::hash12(&input);
+
+        assert_eq!(output[0].to_canonical_u64(), 0x3095570037F4605D);
+        assert_eq!(output[1].to_canonical_u64(), 0x3D561B5EF1BC8B58);
+        assert_eq!(output[2].to_canonical_u64(), 0x8129DB5EC75C3226);
+        assert_eq!(output[3].to_canonical_u64(), 0x8EC2B67AFB6B87ED);
+    }
 }
