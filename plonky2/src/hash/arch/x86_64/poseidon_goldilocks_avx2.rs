@@ -1300,18 +1300,18 @@ where
     let mut r2 = _mm256_loadu_si256((&mut result[0..4]).as_mut_ptr().cast::<__m256i>());
     for r in 1..12 {
         let sr = match r {
-            1 => _mm256_permutex_epi64(*s0, 0x55),
-            2 => _mm256_permutex_epi64(*s0, 0xAA),
-            3 => _mm256_permutex_epi64(*s0, 0xFF),
-            4 => _mm256_permutex_epi64(*s1, 0x0),
-            5 => _mm256_permutex_epi64(*s1, 0x55),
-            6 => _mm256_permutex_epi64(*s1, 0xAA),
-            7 => _mm256_permutex_epi64(*s1, 0xFF),
-            8 => _mm256_permutex_epi64(*s2, 0x0),
-            9 => _mm256_permutex_epi64(*s2, 0x55),
-            10 => _mm256_permutex_epi64(*s2, 0xAA),
-            11 => _mm256_permutex_epi64(*s2, 0xFF),
-            _ => _mm256_permutex_epi64(*s0, 0x55),
+            1 => _mm256_permute4x64_epi64(*s0, 0x55),
+            2 => _mm256_permute4x64_epi64(*s0, 0xAA),
+            3 => _mm256_permute4x64_epi64(*s0, 0xFF),
+            4 => _mm256_permute4x64_epi64(*s1, 0x0),
+            5 => _mm256_permute4x64_epi64(*s1, 0x55),
+            6 => _mm256_permute4x64_epi64(*s1, 0xAA),
+            7 => _mm256_permute4x64_epi64(*s1, 0xFF),
+            8 => _mm256_permute4x64_epi64(*s2, 0x0),
+            9 => _mm256_permute4x64_epi64(*s2, 0x55),
+            10 => _mm256_permute4x64_epi64(*s2, 0xAA),
+            11 => _mm256_permute4x64_epi64(*s2, 0xFF),
+            _ => _mm256_permute4x64_epi64(*s0, 0x55),
         };
         let t0 = _mm256_loadu_si256(
             (&FAST_PARTIAL_ROUND_INITIAL_MATRIX[r][0..4])
