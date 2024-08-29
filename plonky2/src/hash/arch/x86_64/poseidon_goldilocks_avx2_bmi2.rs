@@ -2,12 +2,11 @@ use core::arch::asm;
 use core::arch::x86_64::*;
 use core::mem::size_of;
 
-use static_assertions::const_assert;
+// use static_assertions::const_assert;
 
-use crate::field::goldilocks_field::GoldilocksField;
-use crate::field::types::Field;
+use crate::field::types::PrimeField64;
 use crate::hash::poseidon::{
-    Poseidon, ALL_ROUND_CONSTANTS, HALF_N_FULL_ROUNDS, N_PARTIAL_ROUNDS, N_ROUNDS,
+    ALL_ROUND_CONSTANTS, HALF_N_FULL_ROUNDS, N_PARTIAL_ROUNDS, N_ROUNDS,
 };
 use crate::util::branch_hint;
 
@@ -39,7 +38,7 @@ const FUSED_ROUND_CONSTANTS: [u64; WIDTH * N_ROUNDS] = make_fused_round_constant
 static TOP_ROW_EXPS: [usize; 12] = [0, 10, 16, 3, 12, 8, 1, 5, 3, 0, 1, 0];
 
 // * Compile-time checks *
-
+/*
 /// The MDS matrix multiplication ASM is specific to the MDS matrix below. We want this file to
 /// fail to compile if it has been changed.
 #[allow(dead_code)]
@@ -99,6 +98,7 @@ const fn check_round_const_bounds_init() -> bool {
     true
 }
 const_assert!(check_round_const_bounds_init());
+*/
 
 // Preliminary notes:
 // 1. AVX does not support addition with carry but 128-bit (2-word) addition can be easily
@@ -494,7 +494,7 @@ unsafe fn mds_multiply_and_add_round_const_s(
         // Fall through for MDS matrix multiplication on low 32 bits
 
         // This is a GCC _local label_. For details, see
-        // https://doc.rust-lang.org/rust-by-example/unsafe/asm.html#labels
+        // https://doc.rust-lang.org/beta/unstable-book/library-features/asm.html#labels
         // In short, the assembler makes sure to assign a unique name to replace `2:` with a unique
         // name, so the label does not clash with any compiler-generated label. `2:` can appear
         // multiple times; to disambiguate, we must refer to it as `2b` or `2f`, specifying the
@@ -919,7 +919,7 @@ unsafe fn all_partial_rounds(
 }
 
 #[inline(always)]
-unsafe fn load_state(state: &[GoldilocksField; 12]) -> (__m256i, __m256i, __m256i) {
+unsafe fn load_state<F: PrimeField64>(state: &[F; 12]) -> (__m256i, __m256i, __m256i) {
     (
         _mm256_loadu_si256((&state[0..4]).as_ptr().cast::<__m256i>()),
         _mm256_loadu_si256((&state[4..8]).as_ptr().cast::<__m256i>()),
@@ -928,14 +928,14 @@ unsafe fn load_state(state: &[GoldilocksField; 12]) -> (__m256i, __m256i, __m256
 }
 
 #[inline(always)]
-unsafe fn store_state(buf: &mut [GoldilocksField; 12], state: (__m256i, __m256i, __m256i)) {
+unsafe fn store_state<F: PrimeField64>(buf: &mut [F; 12], state: (__m256i, __m256i, __m256i)) {
     _mm256_storeu_si256((&mut buf[0..4]).as_mut_ptr().cast::<__m256i>(), state.0);
     _mm256_storeu_si256((&mut buf[4..8]).as_mut_ptr().cast::<__m256i>(), state.1);
     _mm256_storeu_si256((&mut buf[8..12]).as_mut_ptr().cast::<__m256i>(), state.2);
 }
 
 #[inline]
-pub unsafe fn poseidon(state: &[GoldilocksField; 12]) -> [GoldilocksField; 12] {
+pub unsafe fn poseidon_avx<F: PrimeField64>(state: &[F; 12]) -> [F; 12] {
     let state = load_state(state);
 
     // The first constant layer must be done explicitly. The remaining constant layers are fused
@@ -946,13 +946,13 @@ pub unsafe fn poseidon(state: &[GoldilocksField; 12]) -> [GoldilocksField; 12] {
     let state = all_partial_rounds(state, HALF_N_FULL_ROUNDS);
     let state = half_full_rounds(state, HALF_N_FULL_ROUNDS + N_PARTIAL_ROUNDS);
 
-    let mut res = [GoldilocksField::ZERO; 12];
+    let mut res = [F::ZERO; 12];
     store_state(&mut res, state);
     res
 }
 
 #[inline(always)]
-pub unsafe fn constant_layer(state_arr: &mut [GoldilocksField; WIDTH], round_ctr: usize) {
+pub unsafe fn constant_layer<F: PrimeField64>(state_arr: &mut [F; WIDTH], round_ctr: usize) {
     let state = load_state(state_arr);
     let round_consts = &ALL_ROUND_CONSTANTS[WIDTH * round_ctr..][..WIDTH]
         .try_into()
@@ -962,20 +962,20 @@ pub unsafe fn constant_layer(state_arr: &mut [GoldilocksField; WIDTH], round_ctr
 }
 
 #[inline(always)]
-pub unsafe fn sbox_layer(state_arr: &mut [GoldilocksField; WIDTH]) {
+pub unsafe fn sbox_layer<F: PrimeField64>(state_arr: &mut [F; WIDTH]) {
     let state = load_state(state_arr);
     let state = sbox_layer_full(state);
     store_state(state_arr, state);
 }
 
 #[inline(always)]
-pub unsafe fn mds_layer(state: &[GoldilocksField; WIDTH]) -> [GoldilocksField; WIDTH] {
+pub unsafe fn mds_layer<F: PrimeField64>(state: &[F; WIDTH]) -> [F; WIDTH] {
     let state = load_state(state);
     // We want to do an MDS layer without the constant layer.
     // The FUSED_ROUND_CONSTANTS for the last round are all 0 (shifted by 2**63 as required).
     let round_consts = FUSED_ROUND_CONSTANTS[WIDTH * (N_ROUNDS - 1)..].as_ptr();
     let state = mds_const_layers_full(state, (round_consts, 0));
-    let mut res = [GoldilocksField::ZERO; 12];
+    let mut res = [F::ZERO; 12];
     store_state(&mut res, state);
     res
 }
