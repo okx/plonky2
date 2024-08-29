@@ -31,6 +31,8 @@ pub unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
      *   - (test 3): if a + b < 2^64 (this means a + b is negative in signed representation) => no overflow so cout = 0
      *   - (test 3): if a + b >= 2^64 (this means a + b becomes positive in signed representation, that is, a + b >= 0) => there is overflow so cout = 1
      */
+
+    /*
     let ones = _mm256_set_epi64x(1, 1, 1, 1);
     let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let r = _mm256_add_epi64(*a, *b);
@@ -40,6 +42,19 @@ pub unsafe fn add64_no_carry(a: &__m256i, b: &__m256i) -> (__m256i, __m256i) {
     let m21 = _mm256_andnot_si256(ma, mb);
     let m22 = _mm256_andnot_si256(mb, ma);
     let m2 = _mm256_or_si256(m21, m22); // test 2
+    let m23 = _mm256_cmpgt_epi64(zeros, r); // test 3
+    let m2 = _mm256_andnot_si256(m23, m2);
+    let m = _mm256_or_si256(m1, m2);
+    let co = _mm256_and_si256(m, ones);
+    (r, co)
+    */
+    let ones = _mm256_set_epi64x(1, 1, 1, 1);
+    let zeros = _mm256_set_epi64x(0, 0, 0, 0);
+    let r = _mm256_add_epi64(*a, *b);
+    let ma = _mm256_cmpgt_epi64(zeros, *a);
+    let mb = _mm256_cmpgt_epi64(zeros, *b);
+    let m1 = _mm256_and_si256(ma, mb); // test 1
+    let m2 = _mm256_xor_si256(ma, mb); // test 2
     let m23 = _mm256_cmpgt_epi64(zeros, r); // test 3
     let m2 = _mm256_andnot_si256(m23, m2);
     let m = _mm256_or_si256(m1, m2);
