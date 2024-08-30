@@ -389,9 +389,6 @@ where
     }
 }
 
-#[derive(Debug, Clone, Default)]
-struct DiffusionMatrixGoldilocks;
-
 pub fn matmul_internal<F: RichField>(
     state: &mut [F; SPONGE_WIDTH],
     mat_internal_diag_m_1: [u64; SPONGE_WIDTH],
@@ -400,18 +397,6 @@ pub fn matmul_internal<F: RichField>(
     for i in 0..SPONGE_WIDTH {
         state[i] *= F::from_canonical_u64(mat_internal_diag_m_1[i]);
         state[i] += sum.clone();
-    }
-}
-
-impl<F: RichField> P2Permutation<[F; 12]> for DiffusionMatrixGoldilocks {
-    #[cfg(not(target_feature = "avx2"))]
-    fn permute_mut(&self, state: &mut [F; 12]) {
-        matmul_internal::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
-    }
-
-    #[cfg(target_feature = "avx2")]
-    fn permute_mut(&self, state: &mut [F; 12]) {
-        matmul_internal_avx::<F>(state, MATRIX_DIAG_12_GOLDILOCKS);
     }
 }
 
