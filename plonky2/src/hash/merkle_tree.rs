@@ -493,7 +493,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
 ) {
     // if the input is small or if it Keccak hashing, just do the hashing on CPU
     use crate::plonk::config::HasherType;
-    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE != HasherType::Poseidon {
+    if leaf_size <= 4 || H::HASHER_TYPE != HasherType::Poseidon {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
         fill_digests_buf_avx512::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
