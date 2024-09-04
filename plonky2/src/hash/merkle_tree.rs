@@ -14,7 +14,7 @@ use cryptography_cuda::device::memory::HostOrDeviceSlice;
 #[cfg(feature = "cuda")]
 use cryptography_cuda::device::stream::CudaStream;
 #[cfg(feature = "cuda")]
-use cryptography_cuda::merkle::bindings::{
+use cryptography_cuda::{
     fill_digests_buf_linear_gpu_with_gpu_ptr, fill_digests_buf_linear_multigpu_with_gpu_ptr,
 };
 use num::range;
