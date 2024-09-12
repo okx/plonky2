@@ -6,7 +6,6 @@ use cryptography_cuda::{
     device::memory::HostOrDeviceSlice, lde_batch, lde_batch_multi_gpu, transpose_rev_batch,
     types::*,
 };
-
 use itertools::Itertools;
 use plonky2_field::types::Field;
 use plonky2_maybe_rayon::*;

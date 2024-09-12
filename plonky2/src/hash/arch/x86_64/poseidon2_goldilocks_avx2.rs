@@ -72,6 +72,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 pub fn matmul_internal_avx<F>(
     state: &mut [F; SPONGE_WIDTH],

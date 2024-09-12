@@ -445,7 +445,7 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     cap_height: usize,
 ) {
     // if the input is small or if it Keccak hashing, just do the hashing on CPU
-    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
+    if leaf_size <= 4 || H::HASHER_TYPE == HasherType::Keccak {
         fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
     } else {
         fill_digests_buf_gpu::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);

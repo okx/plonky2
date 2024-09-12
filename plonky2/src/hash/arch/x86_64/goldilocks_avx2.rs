@@ -81,6 +81,7 @@ pub fn reduce_avx_128_64(c_h: &__m256i, c_l: &__m256i) -> __m256i {
 }
 
 // Here we suppose c_h < 2^32
+#[allow(dead_code)]
 #[inline(always)]
 pub fn reduce_avx_96_64(c_h: &__m256i, c_l: &__m256i) -> __m256i {
     unsafe {
@@ -162,6 +163,7 @@ pub fn mult_avx(a: &__m256i, b: &__m256i) -> __m256i {
 }
 
 // Multiply two 64bit numbers with the assumption that the product does not averflow.
+#[allow(dead_code)]
 #[inline]
 pub unsafe fn mul64_no_overflow(a: &__m256i, b: &__m256i) -> __m256i {
     let r = _mm256_mul_epu32(*a, *b);
@@ -282,6 +284,7 @@ where
     }
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 pub fn sbox_avx_m256i(s0: &__m256i, s1: &__m256i, s2: &__m256i) -> (__m256i, __m256i, __m256i) {
     // x^2

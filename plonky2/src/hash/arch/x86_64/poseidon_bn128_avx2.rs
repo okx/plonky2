@@ -1,8 +1,6 @@
 use core::arch::x86_64::*;
 
 use crate::hash::poseidon_bn128_ops::{ElementBN128, C, M, P, S};
-#[cfg(feature = "papi")]
-use crate::util::papi::{init_papi, stop_papi};
 
 #[allow(dead_code)]
 #[inline]
@@ -799,11 +797,6 @@ fn print_state(state: &[ElementBN128; 5]) {
 }
 
 pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
-    #[cfg(feature = "papi")]
-    let mut event_set = init_papi();
-    #[cfg(feature = "papi")]
-    event_set.start().unwrap();
-
     const CT: usize = 5;
     const N_ROUNDS_F: usize = 8;
     const N_ROUNDS_P: usize = 60;
@@ -835,81 +828,21 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
         // to mont
         inp = to_mont(inp);
 
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "to_mont");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         // start rounds
         let zeros = _mm256_set_epi64x(0, 0, 0, 0);
         let mut state: [__m256i; 8] = [zeros, zeros, zeros, zeros, inp[0], inp[1], inp[2], inp[3]];
 
         ark(&mut state, C, 0);
 
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "first ark");
-
-        /*
-        let mut z = [0u64; 4];
-        let z1 = [3650884469251175381u64, 0, 0, 0];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[0]);
-        assert_eq!(z1, z);
-        let z2 = [4312995929451917048u64, 0, 0, 0];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[1]);
-        assert_eq!(z2, z);
-        let z3 = [14528712943685515188u64, 0, 0, 0];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[2]);
-        assert_eq!(z3, z);
-        let z4 = [804645480652767018u64, 0, 0, 0];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[3]);
-        assert_eq!(z4, z);
-        let z5 = [14462745598712311877u64, 9965481966597437291u64, 5916123222076323011u64, 14423924459958803780u64];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[4]);
-        assert_eq!(z5, z);
-        let z6 = [7570161332469838584u64, 18440159137561926521u64, 7248986691198917743u64, 16755156072218033775u64];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[5]);
-        assert_eq!(z6, z);
-        let z7 = [12421518753342417017u64, 966430971004801851u64, 13841309536587625009u64, 14460935863064733763u64];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[6]);
-        assert_eq!(z7, z);
-        let z8 = [1527580982755995308u64, 1452659775731263630u64, 3308699589782081186u64, 2575827241589250587u64];
-        _mm256_storeu_si256(z.as_mut_ptr().cast::<__m256i>(), state[7]);
-        assert_eq!(z8, z);
-        */
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             exp5state(&mut state);
             ark(&mut state, C, (i + 1) * CT);
             mix(&mut state, M);
         }
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "half full rounds");
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         exp5state(&mut state);
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "exp5state");
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         ark(&mut state, C, (N_ROUNDS_F / 2) * CT);
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "ark");
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         mix(&mut state, P);
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "mix");
 
-        // println!("After 1st rounds:");
-        // print_state8(&state);
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         // switch to classic representation
         let mut cstate = [ElementBN128::zero(); 5];
         let mut tmps = [[0u64; 4]; 4];
@@ -948,9 +881,6 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
         cstate[3] = ElementBN128::new(tmps[2]);
         cstate[4] = ElementBN128::new(tmps[3]);
 
-        // println!("After 1st rounds:");
-        // print_state(&cstate);
-
         for i in 0..N_ROUNDS_P {
             cstate[0].exp5();
             let cc = ElementBN128::new(C[(N_ROUNDS_F / 2 + 1) * CT + i]);
@@ -972,13 +902,7 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
             }
             cstate[0] = new_state0;
         }
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "partial rounds");
-        // println!("After middle rounds:");
-        // print_state(&cstate);
 
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
         // switch to AVX
         state = [
             _mm256_set_epi64x(0i64, 0i64, 0i64, cstate[0].z[0] as i64),
@@ -1011,9 +935,6 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
             ),
         ];
 
-        // println!("After middle rounds:");
-        // print_state8(&state);
-
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             exp5state(&mut state);
             ark(
@@ -1025,21 +946,9 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
         }
         exp5state(&mut state);
         mix(&mut state, M);
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "half full rounds");
-
-        // println!("After all rounds:");
-        // print_state8(&state);
-
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
 
         let ss0 = from_mont(state[0..4].try_into().unwrap());
         let ss1 = from_mont(state[4..8].try_into().unwrap());
-
-        // println!("After from_mont rounds:");
-        // print_state4(&ss0);
-        // print_state4(&ss1);
 
         let mut out: [u64; 12] = [0; 12];
         _mm256_storeu_si256(tmpv.as_mut_ptr().cast::<__m256i>(), ss0[0]);
@@ -1065,8 +974,6 @@ pub fn permute_bn128_avx(input: [u64; 12]) -> [u64; 12] {
                 out[i] = out[i] - 0xFFFFFFFF00000001u64;
             }
         }
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "from_mont");
 
         out
     }
@@ -1098,7 +1005,7 @@ mod tests {
 
             let r = _mm256_add_epi64(ct1, ct2);
             let mut a: [u64; 4] = [0; 4];
-            _mm256_store_si256(a.as_mut_ptr().cast::<__m256i>(), r);
+            _mm256_storeu_si256(a.as_mut_ptr().cast::<__m256i>(), r);
             println!("{:?}", a);
             let x = 2896914383306846353u64 + 13281191951274694749u64;
             println!("{:?}", x);
@@ -1157,13 +1064,13 @@ mod tests {
             let bin = _mm256_set_epi64x(0, 0, 0, 0);
 
             let res = [
-                0xFFFFFFFFFFFFFFFFu64,
+                804645480652767019u64,
                 0xFFFFFFFFFFFFFFFFu64,
                 3u64,
                 0xFFFFFFFFFFFFFFFDu64,
             ];
 
-            let bout = [1u64, 0u64, 0u64, 1u64];
+            let bout = [0u64, 0u64, 0u64, 1u64];
 
             let mut v: [u64; 4] = [0; 4];
             let (c1, c2) = sub64(&a, &b, &bin);

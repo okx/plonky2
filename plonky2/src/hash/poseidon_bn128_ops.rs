@@ -4548,6 +4548,7 @@ pub struct PoseidonBN128NativePermutation<F> {
 }
 
 impl<F: RichField> PoseidonBN128NativePermutation<F> {
+    #[allow(dead_code)]
     #[inline]
     fn exp5state(self, state: &mut [ElementBN128; 5]) {
         state[0].exp5();
@@ -4557,6 +4558,7 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
         state[4].exp5();
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn ark(self, state: &mut [ElementBN128; 5], c: [[u64; 4]; 100], it: usize) {
         for i in 0..5 {
@@ -4565,6 +4567,7 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
         }
     }
 
+    #[allow(dead_code)]
     #[inline]
     fn mix(self, state: &mut [ElementBN128; 5], m: [[[u64; 4]; 5]; 5]) {
         let mut new_state: [ElementBN128; 5] = [ElementBN128::zero(); 5];
@@ -4582,6 +4585,7 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
         }
     }
 
+    #[allow(dead_code)]
     pub fn permute_fn(&self, input: [u64; 12]) -> [u64; 12] {
         let mut inp: [ElementBN128; 4] = [ElementBN128::zero(); 4];
         for i in 0..4 {
