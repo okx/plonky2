@@ -375,15 +375,23 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
         }
     }
     print_time(now, "fill init");
-    
+
     let stream1 = CudaStream::create().unwrap();
     let stream2 = CudaStream::create().unwrap();
 
     gpu_digests_buf
-        .copy_to_host_ptr_async(digests_buf.as_mut_ptr() as *mut core::ffi::c_void, digests_size, &stream1)
+        .copy_to_host_ptr_async(
+            digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+            digests_size,
+            &stream1,
+        )
         .expect("copy digests");
     gpu_cap_buf
-        .copy_to_host_ptr_async(cap_buf.as_mut_ptr() as *mut core::ffi::c_void, caps_size, &stream2)
+        .copy_to_host_ptr_async(
+            cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+            caps_size,
+            &stream2,
+        )
         .expect("copy caps");
     stream1.synchronize().expect("cuda sync");
     stream2.synchronize().expect("cuda sync");
