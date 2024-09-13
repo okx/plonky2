@@ -1,5 +1,5 @@
 #[cfg(feature = "cuda")]
-use alloc::sync::Arc;
+use std::sync::Arc;
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use core::mem::MaybeUninit;

@@ -1,7 +1,5 @@
 use super::hash_types::RichField;
 use super::poseidon::SPONGE_WIDTH;
-#[cfg(feature = "papi")]
-use crate::util::papi::{init_papi, stop_papi};
 
 #[allow(dead_code)]
 pub const RSQUARE: [u64; 4] = [
@@ -4589,11 +4587,6 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
 
     #[allow(dead_code)]
     pub fn permute_fn(&self, input: [u64; 12]) -> [u64; 12] {
-        #[cfg(feature = "papi")]
-        let mut event_set = init_papi();
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         let mut inp: [ElementBN128; 4] = [ElementBN128::zero(); 4];
         for i in 0..4 {
             inp[i].z[0] = input[i * 3 + 2];
@@ -4602,11 +4595,6 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
             inp[i].z[3] = 0;
             inp[i].to_mont();
         }
-
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "to_mont");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
 
         const CT: usize = 5;
         const N_ROUNDS_F: usize = 8;
@@ -4620,42 +4608,15 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
 
         self.ark(&mut state, C, 0);
 
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "first ark");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
             self.ark(&mut state, C, (i + 1) * CT);
             self.mix(&mut state, M);
         }
 
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "first full rounds");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         self.exp5state(&mut state);
-
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "exp5state");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         self.ark(&mut state, C, (N_ROUNDS_F / 2) * CT);
-
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "ark");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         self.mix(&mut state, P);
-
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "mix");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
 
         for i in 0..N_ROUNDS_P {
             state[0].exp5();
@@ -4679,11 +4640,6 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
             state[0] = new_state0;
         }
 
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "partial rounds");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
-
         for i in 0..(N_ROUNDS_F / 2 - 1) {
             self.exp5state(&mut state);
             self.ark(
@@ -4695,11 +4651,6 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
         }
         self.exp5state(&mut state);
         self.mix(&mut state, M);
-
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "second full rounds");
-        #[cfg(feature = "papi")]
-        event_set.start().unwrap();
 
         let mut out: [u64; 12] = [0; 12];
         for i in 0..4 {
@@ -4714,8 +4665,6 @@ impl<F: RichField> PoseidonBN128NativePermutation<F> {
                 out[i] = out[i] - 0xFFFFFFFF00000001u64;
             }
         }
-        #[cfg(feature = "papi")]
-        stop_papi(&mut event_set, "from_mont");
 
         out
     }
