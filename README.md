@@ -1,3 +1,7 @@
+# About this branch
+
+Fork of commit [dc77c77f2b06500e16ad4d7f1c2b057903602eed](https://github.com/okx/plonky2/commits/dc77c77f2b06500e16ad4d7f1c2b057903602eed)
+
 # Plonky2 & more
 [![Discord](https://img.shields.io/discord/743511677072572486?logo=discord)](https://discord.gg/QZKRUpqCJ6)
 
