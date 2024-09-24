@@ -164,7 +164,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         }
     }
 
-    #[cfg(not(feature = "cuda"))]
+    // #[cfg(not(feature = "cuda"))]
     pub fn from_coeffs(
         polynomials: Vec<PolynomialCoeffs<F>>,
         rate_bits: usize,
@@ -184,7 +184,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     }
 
     #[cfg(feature = "cuda")]
-    pub fn from_coeffs(
+    pub fn from_coeffs_cuda(
         polynomials: Vec<PolynomialCoeffs<F>>,
         rate_bits: usize,
         blinding: bool,
