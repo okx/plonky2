@@ -100,6 +100,7 @@ pub mod default {
     use crate::gates::base_sum::BaseSumGate;
     use crate::gates::constant::ConstantGate;
     use crate::gates::coset_interpolation::CosetInterpolationGate;
+    use crate::gates::low_degree_interpolation::LowDegreeInterpolationGate;
     use crate::gates::exponentiation::ExponentiationGate;
     use crate::gates::lookup::LookupGate;
     use crate::gates::lookup_table::LookupTableGate;
@@ -131,6 +132,7 @@ pub mod default {
             ArithmeticExtensionGate<D>,
             BaseSumGate<2>,
             CosetInterpolationGate<F, D>,
+            LowDegreeInterpolationGate<F, D>,
             ExponentiationGate<F, D>,
             LookupGate,
             LookupTableGate,
