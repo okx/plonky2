@@ -157,7 +157,7 @@ mod test {
     use crate::iop::target::Target;
     use crate::iop::witness::{PartialWitness, WitnessWrite};
     use crate::plonk::circuit_builder::CircuitBuilder;
-    use crate::plonk::circuit_data::{CircuitConfig, CommonCircuitData};
+    use crate::plonk::circuit_data::{CircuitConfig, CommonCircuitData, VerifierOnlyCircuitData};
     use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
     use crate::util::serialization::DefaultGateSerializer;
         
@@ -194,6 +194,13 @@ mod test {
             CommonCircuitData::<F, D>::from_bytes(common_data_bytes, &gate_serializer)
                 .map_err(|_| anyhow::Error::msg("CommonCircuitData deserialization failed.")).unwrap();
         assert_eq!(common, recoverred_common_data);
-        
+
+        let vd = data.verifier_only;
+
+        let vd_str = serde_json::to_string(&vd).unwrap();
+
+        let vd_recoverred : VerifierOnlyCircuitData<C, D> = serde_json::from_str(&vd_str).unwrap();
+        assert_eq!(vd, vd_recoverred);
+
     }
 }
