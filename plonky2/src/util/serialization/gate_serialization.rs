@@ -130,19 +130,68 @@ pub mod default {
             ArithmeticGate,
             ArithmeticExtensionGate<D>,
             BaseSumGate<2>,
-            ConstantGate,
             CosetInterpolationGate<F, D>,
             ExponentiationGate<F, D>,
             LookupGate,
             LookupTableGate,
             MulExtensionGate<D>,
             NoopGate,
+            ConstantGate,
             PoseidonMdsGate<F, D>,
-            PoseidonGate<F, D>,
             PublicInputGate,
+            PoseidonGate<F, D>,
             RandomAccessGate<F, D>,
             ReducingExtensionGate<D>,
             ReducingGate<D>
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use crate::field::types::Field;
+    use crate::hash::poseidon::PoseidonHash;
+    use crate::iop::target::Target;
+    use crate::iop::witness::{PartialWitness, WitnessWrite};
+    use crate::plonk::circuit_builder::CircuitBuilder;
+    use crate::plonk::circuit_data::{CircuitConfig, CommonCircuitData};
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+    use crate::util::serialization::DefaultGateSerializer;
+        
+    #[test]
+    fn test_gate_serialization() {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+    
+        let config = CircuitConfig::standard_recursion_config();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+    
+        let targets: [Target; 4] = core::array::from_fn(|_| builder.add_virtual_target()); // (0..4).map(|).collect();
+    
+        builder.hash_n_to_hash_no_pad::<PoseidonHash>(targets.to_vec());
+
+        let mut pw = PartialWitness::new();
+        pw.set_target(targets[0], F::ZERO);
+        pw.set_target(targets[1], F::ONE);
+        pw.set_target(targets[2], F::ZERO);
+        pw.set_target(targets[3], F::ONE);
+    
+        let data = builder.build::<C>();
+    
+        let common: CommonCircuitData<F, D> = data.common;
+
+        let gate_serializer = DefaultGateSerializer;
+        let common_data_bytes = common
+            .to_bytes(&gate_serializer)
+            .map_err(|_| anyhow::Error::msg("CommonCircuitData serialization failed.")).unwrap();
+    
+
+        let recoverred_common_data =
+            CommonCircuitData::<F, D>::from_bytes(common_data_bytes, &gate_serializer)
+                .map_err(|_| anyhow::Error::msg("CommonCircuitData deserialization failed.")).unwrap();
+        assert_eq!(common, recoverred_common_data);
+        
     }
 }

@@ -11,7 +11,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use core::ops::Range;
 #[cfg(feature = "std")]
-use std::{collections::BTreeMap, sync::Arc};
+use std::{collections::BTreeMap};
 
 pub use gate_serialization::default::DefaultGateSerializer;
 pub use gate_serialization::GateSerializer;
@@ -759,14 +759,14 @@ pub trait Read {
 
         let num_partial_products = self.read_usize()?;
 
-        let _num_lookup_polys = self.read_usize()?;
-        let _num_lookup_selectors = self.read_usize()?;
-        let length = self.read_usize()?;
-        let mut luts = Vec::with_capacity(length);
+        // let _num_lookup_polys = self.read_usize()?;
+        // let _num_lookup_selectors = self.read_usize()?;
+        // let length = self.read_usize()?;
+        // let mut luts = Vec::with_capacity(length);
 
-        for _ in 0..length {
-            luts.push(Arc::new(self.read_lut()?));
-        }
+        // for _ in 0..length {
+        //     luts.push(Arc::new(self.read_lut()?));
+        // }
 
         let gates_len = self.read_usize()?;
         let mut gates = Vec::with_capacity(gates_len);
