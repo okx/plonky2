@@ -3,7 +3,7 @@
 #![deny(rustdoc::broken_intra_doc_links)]
 #![deny(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(stdarch_x86_avx512)]
+#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 
 // #[cfg(not(feature = "std"))]
 pub extern crate alloc;
