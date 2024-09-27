@@ -3,7 +3,7 @@ members = ["field", "maybe_rayon", "plonky2", "starky", "util", "gen", "u32", "e
 resolver = "2"
 
 [workspace.dependencies]
-cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "2422995ca4d1d93c798676eeb55fc75d1bc0565e" }
+cryptography_cuda = { git = "ssh://git@github.com/okx/cryptography_cuda.git", rev = "2a7c42d29ee72d7c2c2da9378ae816384c43cdec" }
 ahash = { version = "0.8.7", default-features = false, features = [
     "compile-time-rng",
 ] } # NOTE: Be sure to keep this version the same as the dependency in `hashbrown`.

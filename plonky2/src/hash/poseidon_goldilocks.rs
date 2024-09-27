@@ -450,6 +450,8 @@ mod tests {
     use crate::field::goldilocks_field::GoldilocksField as F;
     use crate::field::types::{Field, PrimeField64};
     use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors};
+    use crate::hash::poseidon::{Poseidon, PoseidonHash};
+    use crate::plonk::config::Hasher;
 
     #[test]
     fn test_vectors() {
@@ -492,5 +494,91 @@ mod tests {
     #[test]
     fn consistency() {
         check_consistency::<F>();
+    }
+
+    #[test]
+    fn test_poseidon_gl() {
+        let input: [F; 12] = [
+            F::from_canonical_u64(168952236939078983),
+            F::from_canonical_u64(18444491095334285830),
+            F::from_canonical_u64(17812083740232784622),
+            F::from_canonical_u64(1301667294099464849),
+            F::from_canonical_u64(8197835875512527937),
+            F::from_canonical_u64(7109417654116018994),
+            F::from_canonical_u64(18237163116575285904),
+            F::from_canonical_u64(17017896878738047012),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0)
+        ];
+        let output = F::poseidon(input);
+        let expected_out: [u64;12] = [
+            7211848465497282123, 8334407123774112207, 4858661444170722461, 8419634888969461752, 8365439750915196882, 13994809114733475841, 8086590873907410085, 17222247664612180184, 2859807231239647069, 1588164466493087886, 10963846266850921292, 10092827555303260923
+        ];   let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        assert_eq!(output.to_vec(), expected_out);
+
+        let input: [F; 12] = [
+            F::from_canonical_u64(18174805707711129211),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(3317138782585384681),
+            F::from_canonical_u64(4886076042774492749),
+            F::from_canonical_u64(15755788230006864922),
+            F::from_canonical_u64(11189743156914232275),
+            F::from_canonical_u64(9830943060727866517),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0),
+            F::from_canonical_u64(0)
+        ];
+        let output = F::poseidon(input);
+        let expected_out: [u64;12] = [11994017978598211037, 7557030840175886847, 2132360640983728466, 4344091215078417239, 5401009700429511129, 2034618959601429994, 11010409655003603569, 8592131210799925716, 8985230087572094046, 12365839308703522999, 6320659093029715449, 16143392566362192896];
+        let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        assert_eq!(output.to_vec(), expected_out);
+    }
+
+    #[test]
+    fn test_hash_no_pad_gl() {
+        let inputs: [u64; 32] =[
+            9972144316416239374,
+            7195869958086994472,
+            12805395537960412263,
+            6755149769410714396,
+            16592921959755212957,
+            1370750654791741308,
+            11186995120529280354,
+            288690570896506034,
+            2896720011649362435,
+            13870686984275550055,
+            12288026009924247278,
+            15608864109019511973,
+            15690944173815210604,
+            17535150735055770942,
+            4265223756233917229,
+            17236464151311603291,
+            15180455466814482598,
+            12377438429067983442,
+            11274960245127600167,
+            5684300978461808754,
+            1918159483831849502,
+            15340265949423289730,
+            181633163915570313,
+            12684059848091546996,
+            10060377187090493210,
+            13523019938818230572,
+            16846214147461656883,
+            13560222746484567233,
+            2150999602305437005,
+            9103462636082953981,
+            16341057499572706412,
+            842265247111451937
+        ];
+        let inputs = inputs.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let output = PoseidonHash::hash_no_pad(&inputs);
+
+        let expected_out: [u64;4] = [8197835875512527937, 7109417654116018994, 18237163116575285904, 17017896878738047012];
+        let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        assert_eq!(output.elements.to_vec(), expected_out);
     }
 }

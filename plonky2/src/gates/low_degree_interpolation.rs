@@ -20,7 +20,7 @@ use crate::iop::witness::{PartitionWitness, Witness, WitnessWrite};
 use crate::plonk::circuit_builder::CircuitBuilder;
 use crate::plonk::circuit_data::CommonCircuitData;
 use crate::plonk::vars::{EvaluationTargets, EvaluationVars, EvaluationVarsBase};
-use crate::util::serialization::{Buffer, IoResult};
+use crate::util::serialization::{Buffer, IoResult, Read, Write};
 
 /// One of the instantiations of `InterpolationGate`: all constraints are degree <= 2.
 /// The lower degree is a tradeoff for more gates (`eval_unfiltered_recursively` for
@@ -86,14 +86,19 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for LowDegreeInter
     }
     fn serialize(
         &self,
-        _dst: &mut Vec<u8>,
+        dst: &mut Vec<u8>,
         _common_data: &CommonCircuitData<F, D>,
     ) -> IoResult<()> {
-        todo!()
+        dst.write_usize(self.subgroup_bits)?;
+        Ok(())
     }
 
-    fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
-        todo!()
+    fn deserialize(src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
+        let subgroup_bits = src.read_usize()?;
+        Ok(Self {
+            subgroup_bits,
+            _phantom: PhantomData,
+        })
     }
 
     fn export_circom_verification_code(&self) -> String {

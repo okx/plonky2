@@ -1,7 +1,7 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+// include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
 
 use super::hash_types::HashOutTarget;
 use super::poseidon::PoseidonPermutation;
@@ -262,7 +262,7 @@ mod tests {
     use plonky2_field::types::Field;
 
     use super::PoseidonBN128Hash;
-    use crate::plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig};
+    use crate::{hash::poseidon::PoseidonHash, plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig}};
 
     #[test]
     fn test_poseidon_bn128_hash_no_pad() -> Result<()> {
@@ -314,7 +314,7 @@ mod tests {
     }
 
     #[test]
-    fn test_poseidon_bn128_hash_public_inputs() -> Result<()> {
+    fn test_poseidon_bn128_hash_public_inputs_same_as_poseidon_hash() -> Result<()> {
         const D: usize = 2;
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
@@ -332,6 +332,9 @@ mod tests {
         assert_eq!(h.elements[2].0, 5900587506047513594);
         assert_eq!(h.elements[3].0, 7217031981798124005);
 
+        // let inputs = inputs.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let poseidon_hash = PoseidonHash::hash_no_pad(&v);
+        assert_eq!(h, poseidon_hash);
         Ok(())
     }
 }
