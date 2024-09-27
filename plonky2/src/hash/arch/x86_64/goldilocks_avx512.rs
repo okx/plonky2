@@ -5,55 +5,55 @@ use crate::hash::hash_types::RichField;
 
 const MSB_: i64 = 0x8000000000000000u64 as i64;
 const P8_: i64 = 0xFFFFFFFF00000001u64 as i64;
-const P8_n_: i64 = 0xFFFFFFFF;
+const P8_N_: i64 = 0xFFFFFFFF;
 
 #[allow(dead_code)]
 #[inline(always)]
 pub fn shift_avx512(a: &__m512i) -> __m512i {
     unsafe {
-        let MSB = _mm512_set_epi64(MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_);
-        _mm512_xor_si512(*a, MSB)
+        let msb = _mm512_set_epi64(MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_);
+        _mm512_xor_si512(*a, msb)
     }
 }
 
 #[allow(dead_code)]
 #[inline(always)]
-pub fn toCanonical_avx512(a: &__m512i) -> __m512i {
+pub fn to_canonical_avx512(a: &__m512i) -> __m512i {
     unsafe {
-        let P8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
-        let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
-        let result_mask = _mm512_cmpge_epu64_mask(*a, P8);
-        _mm512_mask_add_epi64(*a, result_mask, *a, P8_n)
+        let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
+        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let result_mask = _mm512_cmpge_epu64_mask(*a, p8);
+        _mm512_mask_add_epi64(*a, result_mask, *a, p8_n)
     }
 }
 
 #[inline(always)]
 pub fn add_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
-        let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
+        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
         let c0 = _mm512_add_epi64(*a, *b);
         let result_mask = _mm512_cmpgt_epu64_mask(*a, c0);
-        _mm512_mask_add_epi64(c0, result_mask, c0, P8_n)
+        _mm512_mask_add_epi64(c0, result_mask, c0, p8_n)
     }
 }
 
 #[inline(always)]
 pub fn sub_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
-        let P8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
+        let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
         let c0 = _mm512_sub_epi64(*a, *b);
         let result_mask = _mm512_cmpgt_epu64_mask(*b, *a);
-        _mm512_mask_add_epi64(c0, result_mask, c0, P8)
+        _mm512_mask_add_epi64(c0, result_mask, c0, p8)
     }
 }
 
 #[inline(always)]
 pub fn reduce_avx512_128_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
     unsafe {
-        let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
+        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
         let c_hh = _mm512_srli_epi64(*c_h, 32);
         let c1 = sub_avx512_b_c(c_l, &c_hh);
-        let c2 = _mm512_mul_epu32(*c_h, P8_n);
+        let c2 = _mm512_mul_epu32(*c_h, p8_n);
         add_avx512_b_c(&c1, &c2)
     }
 }
@@ -69,8 +69,8 @@ pub fn mult_avx512_128(a: &__m512i, b: &__m512i) -> (__m512i, __m512i) {
         let c_ll = _mm512_mul_epu32(*a, *b);
         let c_ll_h = _mm512_srli_epi64(c_ll, 32);
         let r0 = _mm512_add_epi64(c_hl, c_ll_h);
-        let P8_n = _mm512_set_epi64(P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_, P8_n_);
-        let r0_l = _mm512_and_si512(r0, P8_n);
+        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let r0_l = _mm512_and_si512(r0, p8_n);
         let r0_h = _mm512_srli_epi64(r0, 32);
         let r1 = _mm512_add_epi64(c_lh, r0_l);
         let r1_l = _mm512_slli_epi64(r1, 32);
@@ -112,6 +112,7 @@ pub fn sqr_avx512(a: &__m512i) -> __m512i {
     reduce_avx512_128_64(&c_h, &c_l)
 }
 
+#[allow(dead_code)]
 #[inline(always)]
 pub fn sbox_avx512<F>(state: &mut [F; 16])
 where

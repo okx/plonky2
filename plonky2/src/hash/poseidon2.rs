@@ -9,7 +9,7 @@ use plonky2_field::goldilocks_field::GoldilocksField;
 use super::arch::x86_64::goldilocks_avx2::sbox_avx;
 #[cfg(target_feature = "avx2")]
 use super::arch::x86_64::poseidon2_goldilocks_avx2::{
-    add_rc_avx, internal_layer_avx, matmul_internal_avx, permute_mut_avx,
+    add_rc_avx, internal_layer_avx, permute_mut_avx,
 };
 use super::hash_types::{HashOutTarget, NUM_HASH_OUT_ELTS};
 use crate::field::extension::Extendable;

@@ -1,12 +1,8 @@
 [package]
 name = "plonky2"
 description = "Recursive SNARKs based on PLONK and FRI"
-version = "0.2.0"
-authors = [
-    "Daniel Lubarov <daniel@lubarov.com>",
-    "William Borgeaud <williamborgeaud@gmail.com>",
-    "Nicholas Ward <npward@berkeley.edu>",
-]
+version = "0.2.2"
+authors = ["Daniel Lubarov <daniel@lubarov.com>", "William Borgeaud <williamborgeaud@gmail.com>", "Nicholas Ward <npward@berkeley.edu>"]
 readme = "README.md"
 edition.workspace = true
 license.workspace = true
@@ -45,7 +41,7 @@ once_cell = { version = "1.18.0" }
 papi-bindings = { version = "0.5.2" }
 
 # Local dependencies
-plonky2_field = { version = "0.2.0", path = "../field", default-features = false }
+plonky2_field = { version = "0.2.2", path = "../field", default-features = false }
 plonky2_maybe_rayon = { version = "0.2.0", path = "../maybe_rayon", default-features = false }
 plonky2_util = { version = "0.2.0", path = "../util", default-features = false }
 cryptography_cuda = { workspace = true, optional = true }

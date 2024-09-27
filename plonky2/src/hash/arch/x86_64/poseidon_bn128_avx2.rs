@@ -1095,13 +1095,18 @@ mod tests {
                 13281191951274694749u64 as i64,
                 13281191951274694749u64 as i64,
             );
+            let exp: [u64; 4] = [
+                0xE0842DFEFB3AC8EEu64,
+                0xE0842DFEFB3AC8EEu64,
+                0xE0842DFEFB3AC8EEu64,
+                0xE0842DFEFB3AC8EEu64,
+            ];
 
             let r = _mm256_add_epi64(ct1, ct2);
-            let mut a: [u64; 4] = [0; 4];
-            _mm256_store_si256(a.as_mut_ptr().cast::<__m256i>(), r);
-            println!("{:?}", a);
-            let x = 2896914383306846353u64 + 13281191951274694749u64;
-            println!("{:?}", x);
+            let mut vr: [u64; 4] = [0; 4];
+            _mm256_storeu_si256(vr.as_mut_ptr().cast::<__m256i>(), r);
+            println!("{:X?}", vr);
+            assert_eq!(vr, exp);
         }
         Ok(())
     }
@@ -1147,28 +1152,19 @@ mod tests {
     #[test]
     fn test_bn128_sub64() -> Result<()> {
         unsafe {
-            let a = _mm256_set_epi64x(
-                4i64,
-                7i64,
-                0xFFFFFFFFFFFFFFFFu64 as i64,
-                4291643747455737684u64 as i64,
-            );
-            let b = _mm256_set_epi64x(7i64, 4i64, 0x0i64, 3486998266802970665u64 as i64);
+            let a = _mm256_set_epi64x(4i64, 7i64, 0xFFFFFFFFFFFFFFFFu64 as i64, 0x0u64 as i64);
+            let b = _mm256_set_epi64x(7i64, 4i64, 0x0i64, 0xFFFFFFFFFFFFFFFFu64 as i64);
             let bin = _mm256_set_epi64x(0, 0, 0, 0);
 
-            let res = [
-                0xFFFFFFFFFFFFFFFFu64,
-                0xFFFFFFFFFFFFFFFFu64,
-                3u64,
-                0xFFFFFFFFFFFFFFFDu64,
-            ];
+            let res = [0x1u64, 0xFFFFFFFFFFFFFFFFu64, 3u64, 0xFFFFFFFFFFFFFFFDu64];
 
             let bout = [1u64, 0u64, 0u64, 1u64];
 
             let mut v: [u64; 4] = [0; 4];
             let (c1, c2) = sub64(&a, &b, &bin);
             _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), c1);
-            println!(" Res: {:?}", v);
+            println!("Res: {:X?}", v);
+            println!("Exp: {:X?}", res);
             assert_eq!(v, res);
             _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), c2);
             println!("Cout: {:X?}", v);
