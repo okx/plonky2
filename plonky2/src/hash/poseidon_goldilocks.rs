@@ -510,12 +510,27 @@ mod tests {
             F::from_canonical_u64(0),
             F::from_canonical_u64(0),
             F::from_canonical_u64(0),
-            F::from_canonical_u64(0)
+            F::from_canonical_u64(0),
         ];
         let output = F::poseidon(input);
-        let expected_out: [u64;12] = [
-            7211848465497282123, 8334407123774112207, 4858661444170722461, 8419634888969461752, 8365439750915196882, 13994809114733475841, 8086590873907410085, 17222247664612180184, 2859807231239647069, 1588164466493087886, 10963846266850921292, 10092827555303260923
-        ];   let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let expected_out: [u64; 12] = [
+            7211848465497282123,
+            8334407123774112207,
+            4858661444170722461,
+            8419634888969461752,
+            8365439750915196882,
+            13994809114733475841,
+            8086590873907410085,
+            17222247664612180184,
+            2859807231239647069,
+            1588164466493087886,
+            10963846266850921292,
+            10092827555303260923,
+        ];
+        let expected_out = expected_out
+            .iter()
+            .map(|x| F::from_canonical_u64(*x))
+            .collect::<Vec<F>>();
         assert_eq!(output.to_vec(), expected_out);
 
         let input: [F; 12] = [
@@ -530,17 +545,33 @@ mod tests {
             F::from_canonical_u64(0),
             F::from_canonical_u64(0),
             F::from_canonical_u64(0),
-            F::from_canonical_u64(0)
+            F::from_canonical_u64(0),
         ];
         let output = F::poseidon(input);
-        let expected_out: [u64;12] = [11994017978598211037, 7557030840175886847, 2132360640983728466, 4344091215078417239, 5401009700429511129, 2034618959601429994, 11010409655003603569, 8592131210799925716, 8985230087572094046, 12365839308703522999, 6320659093029715449, 16143392566362192896];
-        let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let expected_out: [u64; 12] = [
+            11994017978598211037,
+            7557030840175886847,
+            2132360640983728466,
+            4344091215078417239,
+            5401009700429511129,
+            2034618959601429994,
+            11010409655003603569,
+            8592131210799925716,
+            8985230087572094046,
+            12365839308703522999,
+            6320659093029715449,
+            16143392566362192896,
+        ];
+        let expected_out = expected_out
+            .iter()
+            .map(|x| F::from_canonical_u64(*x))
+            .collect::<Vec<F>>();
         assert_eq!(output.to_vec(), expected_out);
     }
 
     #[test]
     fn test_hash_no_pad_gl() {
-        let inputs: [u64; 32] =[
+        let inputs: [u64; 32] = [
             9972144316416239374,
             7195869958086994472,
             12805395537960412263,
@@ -572,13 +603,24 @@ mod tests {
             2150999602305437005,
             9103462636082953981,
             16341057499572706412,
-            842265247111451937
+            842265247111451937,
         ];
-        let inputs = inputs.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let inputs = inputs
+            .iter()
+            .map(|x| F::from_canonical_u64(*x))
+            .collect::<Vec<F>>();
         let output = PoseidonHash::hash_no_pad(&inputs);
 
-        let expected_out: [u64;4] = [8197835875512527937, 7109417654116018994, 18237163116575285904, 17017896878738047012];
-        let expected_out = expected_out.iter().map(|x| F::from_canonical_u64(*x)).collect::<Vec<F>>();
+        let expected_out: [u64; 4] = [
+            8197835875512527937,
+            7109417654116018994,
+            18237163116575285904,
+            17017896878738047012,
+        ];
+        let expected_out = expected_out
+            .iter()
+            .map(|x| F::from_canonical_u64(*x))
+            .collect::<Vec<F>>();
         assert_eq!(output.elements.to_vec(), expected_out);
     }
 }

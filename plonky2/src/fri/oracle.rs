@@ -196,7 +196,10 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let degree = polynomials[0].len();
         let log_n = log2_strict(degree);
 
-        if log_n + rate_bits > 1 && polynomials.len() > 0 && pols * (1 << (log_n + rate_bits)) <  (1 << 31) {
+        if log_n + rate_bits > 1
+            && polynomials.len() > 0
+            && pols * (1 << (log_n + rate_bits)) < (1 << 31)
+        {
             let _num_gpus: usize = std::env::var("NUM_OF_GPUS")
                 .expect("NUM_OF_GPUS should be set")
                 .parse()
@@ -256,7 +259,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let total_num_of_fft = polynomials.len();
         // println!("total_num_of_fft: {:?}", total_num_of_fft);
 
-        let num_of_cols = total_num_of_fft + salt_size;     // if blinding, extend by salt_size
+        let num_of_cols = total_num_of_fft + salt_size; // if blinding, extend by salt_size
         let total_num_input_elements = total_num_of_fft * (1 << log_n);
         let total_num_output_elements = num_of_cols * (1 << output_domain_size);
 
@@ -451,9 +454,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
                     r
                 })
                 .chain(
-                     (0..salt_size)
-                         .into_par_iter()
-                         .map(|_| F::rand_vec(degree << rate_bits)),
+                    (0..salt_size)
+                        .into_par_iter()
+                        .map(|_| F::rand_vec(degree << rate_bits)),
                 )
                 .collect();
             println!("real lde elapsed: {:?}", start_lde.elapsed());

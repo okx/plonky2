@@ -8,7 +8,7 @@ use core::ops::Range;
 use std::sync::Arc;
 
 use hashbrown::HashMap;
-use serde::{ Serialize, Serializer};
+use serde::{Serialize, Serializer};
 
 use crate::field::batch_util::batch_multiply_inplace;
 use crate::field::extension::{Extendable, FieldExtension};
