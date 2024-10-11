@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 
 use crate::field::extension::Extendable;
@@ -51,12 +55,12 @@ impl<F: RichField + Extendable<D>, const D: usize> ExponentiationGate<F, D> {
         max_for_routed_wires.min(max_for_wires)
     }
 
-    pub const fn wire_base(&self) -> usize {
+    pub(crate) const fn wire_base(&self) -> usize {
         0
     }
 
     /// The `i`th bit of the exponent, in little-endian order.
-    pub fn wire_power_bit(&self, i: usize) -> usize {
+    pub(crate) const fn wire_power_bit(&self, i: usize) -> usize {
         debug_assert!(i < self.num_power_bits);
         1 + i
     }
@@ -65,7 +69,7 @@ impl<F: RichField + Extendable<D>, const D: usize> ExponentiationGate<F, D> {
         1 + self.num_power_bits
     }
 
-    pub fn wire_intermediate_value(&self, i: usize) -> usize {
+    pub(crate) const fn wire_intermediate_value(&self, i: usize) -> usize {
         debug_assert!(i < self.num_power_bits);
         2 + self.num_power_bits + i
     }
@@ -118,6 +122,77 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for Exponentiation
         constraints.push(output - intermediate_values[self.num_power_bits - 1]);
 
         constraints
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+        "template Exponentiation$NUM_POWER_BITS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  out[0] <== ConstraintPush()(constraints[0], filter,
+              GlExtSub()(GlExtMul()(GlExt(1, 0)(),
+                                    GlExtAdd()(GlExtMul()(wires[$NUM_POWER_BITS], wires[0]),
+                                               GlExtSub()(GlExt(1, 0)(), wires[$NUM_POWER_BITS])
+                                               )
+                                    ),
+                         wires[$NUM_POWER_BITS + 2]));
+  for (var i = 1; i < $NUM_POWER_BITS; i++) {{
+    // prev_intermediate_value * (cur_bit * wires[0] + (1 - cur_bit)) - wires[$NUM_POWER_BITS + 2 + i]
+    out[i] <== ConstraintPush()(constraints[i], filter,
+                GlExtSub()(GlExtMul()(GlExtSquare()(wires[$NUM_POWER_BITS + 1 + i]),
+                                      GlExtAdd()(GlExtMul()(wires[$NUM_POWER_BITS - i], wires[0]),
+                                                 GlExtSub()(GlExt(1, 0)(), wires[$NUM_POWER_BITS - i])
+                                                 )
+                                      ),
+                           wires[$NUM_POWER_BITS + 2 + i]));
+  }}
+  out[$NUM_POWER_BITS] <== ConstraintPush()(constraints[$NUM_POWER_BITS], filter, GlExtSub()(wires[$NUM_POWER_BITS + 1], wires[2 * $NUM_POWER_BITS + 1]));
+
+  for (var i = $NUM_POWER_BITS + 1; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}"
+        ).to_string();
+        template_str = template_str.replace("$NUM_POWER_BITS", &*self.num_power_bits.to_string());
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "library Exponentiation$NUM_POWER_BITSLib {{
+    using GoldilocksExtLib for uint64[2];
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        // wire indices
+        // base: 0
+        // power_bits: [1 + i]
+        // output: num_power_bits + 1
+        // intermediate_values: [num_power_bits + 2 + i]
+        for (uint32 i = 0; i < $NUM_POWER_BITS; i++) {{
+            uint64[2] memory prev_intermediate_value;
+            if (i == 0) {{
+                prev_intermediate_value = GoldilocksExtLib.one();
+            }} else {{
+                prev_intermediate_value = ev.wires[$NUM_POWER_BITS + 1 + i].square();
+            }}
+            uint64[2] memory cur_bit = ev.wires[$NUM_POWER_BITS - i];
+            GatesUtilsLib.push(constraints, ev.filter, i, prev_intermediate_value.mul(cur_bit.mul(ev.wires[0]).add(GoldilocksExtLib.one().sub(cur_bit))).sub(ev.wires[$NUM_POWER_BITS + 2 + i]));
+        }}
+        GatesUtilsLib.push(constraints, ev.filter, $NUM_POWER_BITS, ev.wires[$NUM_POWER_BITS + 1].sub(ev.wires[2 * $NUM_POWER_BITS + 1]));
+    }}
+}}"
+        )
+            .to_string();
+        template_str = template_str.replace("$NUM_POWER_BITS", &*self.num_power_bits.to_string());
+        template_str
     }
 
     fn eval_unfiltered_base_one(
@@ -237,7 +312,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PackedEvaluableBase<F, D>
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ExponentiationGenerator<F: RichField + Extendable<D>, const D: usize> {
     row: usize,
     gate: ExponentiationGate<F, D>,

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::extension::{Extendable, FieldExtension};
 use crate::fft::{fft, fft_with_options, ifft, FftRootTable};
-use crate::types::{Field};
+use crate::types::Field;
 
 /// A polynomial in point-value form.
 ///
@@ -88,9 +88,7 @@ impl<F: Field> PolynomialValues<F> {
     }
 
     pub fn degree(&self) -> usize {
-        self.degree_plus_one()
-            .checked_sub(1)
-            .expect("deg(0) is undefined")
+        self.degree_plus_one().saturating_sub(1)
     }
 
     pub fn degree_plus_one(&self) -> usize {

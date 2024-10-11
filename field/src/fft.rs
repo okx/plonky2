@@ -2,7 +2,7 @@ use alloc::vec::Vec;
 use core::cmp::{max, min};
 
 #[cfg(feature = "cuda")]
-use cryptography_cuda::{iNTT, NTT, types::NTTInputOutputOrder};
+use cryptography_cuda::{ntt, types::NTTInputOutputOrder};
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 use unroll::unroll_for_loops;
 
@@ -34,6 +34,7 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
     root_table
 }
 
+#[allow(dead_code)]
 #[cfg(feature = "cuda")]
 fn fft_dispatch_gpu<F: Field>(
     input: &mut [F],
@@ -41,7 +42,7 @@ fn fft_dispatch_gpu<F: Field>(
     root_table: Option<&FftRootTable<F>>,
 ) {
     if F::CUDA_SUPPORT {
-        return NTT(0, input, NTTInputOutputOrder::NN);
+        return ntt(0, input, NTTInputOutputOrder::NN);
     } else {
         return fft_dispatch_cpu(input, zero_factor, root_table);
     }
@@ -52,18 +53,27 @@ fn fft_dispatch_cpu<F: Field>(
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
 ) {
+    /*
     if root_table.is_some() {
         return fft_classic(input, zero_factor.unwrap_or(0), root_table.unwrap());
     } else {
-        let pre_computed = F::pre_compute_fft_root_table(input.len());
-        if pre_computed.is_some() {
-            return fft_classic(input, zero_factor.unwrap_or(0), pre_computed.unwrap());
-        } else {
-            let computed = fft_root_table::<F>(input.len());
+        // let pre_computed = F::pre_compute_fft_root_table(input.len());
+        // if pre_computed.is_some() {
+        //     return fft_classic(input, zero_factor.unwrap_or(0), pre_computed.unwrap());
+        // } else {
+        //     let computed = fft_root_table::<F>(input.len());
 
-            return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
-        }
+        //     return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
+        // }
+        let computed = fft_root_table::<F>(input.len());
+
+        return fft_classic(input, zero_factor.unwrap_or(0), computed.as_ref());
     };
+    */
+    let computed_root_table = root_table.is_none().then(|| fft_root_table(input.len()));
+    let used_root_table = root_table.or(computed_root_table.as_ref()).unwrap();
+
+    fft_classic(input, zero_factor.unwrap_or(0), used_root_table);
 }
 
 #[inline]
@@ -72,8 +82,8 @@ fn fft_dispatch<F: Field>(
     zero_factor: Option<usize>,
     root_table: Option<&FftRootTable<F>>,
 ) {
-    #[cfg(feature = "cuda")]
-    return fft_dispatch_gpu(input, zero_factor, root_table);
+    // #[cfg(feature = "cuda")]
+    // return fft_dispatch_gpu(input, zero_factor, root_table);
     return fft_dispatch_cpu(input, zero_factor, root_table);
 }
 

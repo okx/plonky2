@@ -1,8 +1,8 @@
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use core::ops::Range;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::field::extension::Extendable;
 use crate::field::polynomial::PolynomialValues;
@@ -13,10 +13,10 @@ use crate::plonk::circuit_builder::LookupWire;
 /// Placeholder value to indicate that a gate doesn't use a selector polynomial.
 pub(crate) const UNUSED_SELECTOR: usize = u32::MAX as usize;
 
-#[derive(Debug, Clone, Eq, PartialEq, Serialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Serialize, Deserialize)]
 pub struct SelectorsInfo {
-    pub(crate) selector_indices: Vec<usize>,
-    pub(crate) groups: Vec<Range<usize>>,
+    pub selector_indices: Vec<usize>,
+    pub groups: Vec<Range<usize>>,
 }
 
 impl SelectorsInfo {
@@ -31,6 +31,8 @@ impl SelectorsInfo {
 /// - `InitSre` is for the initial constraint of Sum and Re.
 /// - `LastLdc` is for the final LDC (and Sum) constraint.
 /// - `StartEnd` indicates where lookup end selectors begin.
+#[allow(dead_code)]
+#[derive(Debug)]
 pub enum LookupSelectors {
     TransSre = 0,
     TransLdc,
@@ -46,6 +48,7 @@ pub enum LookupSelectors {
 /// - {first_lut_row + 1} where we check the initial values of sum and RE (which are 0),
 /// - {last_lu_row} where we check that the last value of LDC is 0.
 /// Conceptually they're part of the selector ends lookups, but since we can have one polynomial for *all* LUTs it's here.
+#[allow(dead_code)]
 pub(crate) fn selectors_lookup<F: RichField + Extendable<D>, const D: usize>(
     _gates: &[GateRef<F, D>],
     instances: &[GateInstance<F, D>],
@@ -77,6 +80,7 @@ pub(crate) fn selectors_lookup<F: RichField + Extendable<D>, const D: usize>(
 
 /// Returns selectors for checking the validity of the LUTs.
 /// Each selector equals one on its respective LUT's `last_lut_row`, and 0 elsewhere.
+#[allow(dead_code)]
 pub(crate) fn selector_ends_lookups<F: RichField + Extendable<D>, const D: usize>(
     lookup_rows: &[LookupWire],
     instances: &[GateInstance<F, D>],

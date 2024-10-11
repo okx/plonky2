@@ -2,8 +2,6 @@ use plonky2_field::fft::fft;
 use plonky2_field::goldilocks_field::GoldilocksField;
 use plonky2_field::polynomial::PolynomialCoeffs;
 use plonky2_field::types::Field;
-
-
 use rand::random;
 
 fn random_fr() -> u64 {
@@ -15,7 +13,7 @@ fn main() {
     let domain_size = 1usize << 10;
 
     let v: Vec<u64> = (0..domain_size).map(|_| random_fr()).collect();
-    let mut buffer = v.clone();
+    let buffer = v.clone();
 
     let coeffs = buffer
         .iter()

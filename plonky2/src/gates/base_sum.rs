@@ -1,6 +1,5 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec, vec::Vec};
 use core::ops::Range;
 
 use crate::field::extension::Extendable;
@@ -41,11 +40,11 @@ impl<const B: usize> BaseSumGate<B> {
         Self::new(num_limbs)
     }
 
-    pub const WIRE_SUM: usize = 0;
-    pub const START_LIMBS: usize = 1;
+    pub(crate) const WIRE_SUM: usize = 0;
+    pub(crate) const START_LIMBS: usize = 1;
 
     /// Returns the index of the `i`th limb wire.
-    pub const fn limbs(&self) -> Range<usize> {
+    pub(crate) const fn limbs(&self) -> Range<usize> {
         Self::START_LIMBS..Self::START_LIMBS + self.num_limbs
     }
 }
@@ -62,6 +61,76 @@ impl<F: RichField + Extendable<D>, const D: usize, const B: usize> Gate<F, D> fo
     fn deserialize(src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         let num_limbs = src.read_usize()?;
         Ok(Self { num_limbs })
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template BaseSum$NUM_LIMBS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  component reduce = Reduce($NUM_LIMBS);
+  reduce.alpha <== GlExt($B, 0)();
+  reduce.old_eval <== GlExt(0, 0)();
+  for (var i = 1; i < $NUM_LIMBS + 1; i++) {{
+    reduce.in[i - 1] <== wires[i];
+  }}
+  out[0] <== ConstraintPush()(constraints[0], filter, GlExtSub()(reduce.out, wires[0]));
+  component product[$NUM_LIMBS][$B - 1];
+  for (var i = 0; i < $NUM_LIMBS; i++) {{
+    for (var j = 0; j < $B - 1; j++) {{
+      product[i][j] = GlExtMul();
+      if (j == 0) product[i][j].a <== wires[i + 1];
+      else product[i][j].a <== product[i][j - 1].out;
+      product[i][j].b <== GlExtSub()(wires[i + 1], GlExt(j + 1, 0)());
+    }}
+    out[i + 1] <== ConstraintPush()(constraints[i + 1], filter, product[i][$B - 2].out);
+  }}
+  for (var i = $NUM_LIMBS + 1; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}"
+        )
+        .to_string();
+        template_str = template_str.replace("$NUM_LIMBS", &*self.num_limbs.to_string());
+        template_str = template_str.replace("$B", &*B.to_string());
+
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!("library BaseSum$NUM_LIMBSLib {{
+    using GoldilocksExtLib for uint64[2];
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        uint64[2] memory sum;
+        for (uint32 i = $NUM_LIMBS + 1; i > 1; i--) {{
+            sum = sum.mul(GatesUtilsLib.field_ext_from($B, 0)).add(ev.wires[i - 1]);
+        }}
+        GatesUtilsLib.push(constraints, ev.filter, 0, sum.sub(ev.wires[0]));
+        for (uint32 i = 1; i < $NUM_LIMBS + 1; i++) {{
+            uint64[2] memory product = ev.wires[i];
+            for (uint32 j = 1; j < $B; j++) {{
+                product = product.mul(ev.wires[i].sub(GatesUtilsLib.field_ext_from(j, 0)));
+            }}
+            GatesUtilsLib.push(constraints, ev.filter, i, product);
+        }}
+    }}
+}}"
+        )
+        .to_string();
+
+        template_str = template_str.replace("$NUM_LIMBS", &*self.num_limbs.to_string());
+        template_str = template_str.replace("$B", &*B.to_string());
+
+        template_str
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
@@ -169,7 +238,7 @@ impl<F: RichField + Extendable<D>, const D: usize, const B: usize> PackedEvaluab
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BaseSplitGenerator<const B: usize> {
     row: usize,
     num_limbs: usize,
@@ -179,7 +248,7 @@ impl<F: RichField + Extendable<D>, const B: usize, const D: usize> SimpleGenerat
     for BaseSplitGenerator<B>
 {
     fn id(&self) -> String {
-        "BaseSplitGenerator".to_string()
+        format!("BaseSplitGenerator + Base: {B}")
     }
 
     fn dependencies(&self) -> Vec<Target> {

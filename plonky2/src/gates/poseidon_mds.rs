@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 use core::ops::Range;
 
@@ -29,12 +33,12 @@ impl<F: RichField + Extendable<D> + Poseidon, const D: usize> PoseidonMdsGate<F,
         Self(PhantomData)
     }
 
-    pub fn wires_input(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_input(i: usize) -> Range<usize> {
         assert!(i < SPONGE_WIDTH);
         i * D..(i + 1) * D
     }
 
-    pub fn wires_output(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_output(i: usize) -> Range<usize> {
         assert!(i < SPONGE_WIDTH);
         (SPONGE_WIDTH + i) * D..(SPONGE_WIDTH + i + 1) * D
     }
@@ -129,6 +133,52 @@ impl<F: RichField + Extendable<D> + Poseidon, const D: usize> Gate<F, D> for Pos
 
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         Ok(PoseidonMdsGate::new())
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        assert_eq!(D, 2);
+        assert_eq!(SPONGE_WIDTH, 12);
+        let template_str = format!(
+            "template PoseidonMdsGate12() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  signal state[13][12][2][2];
+  for (var r = 0; r < 12; r++) {{
+    for (var i = 0; i < 12; i++) {{
+      var j = i + r >= 12 ? i + r - 12 : i + r;
+      if (i == 0) {{
+        state[i][r][0] <== GlExtScalarMul()(wires[j * 2], MDS_MATRIX_CIRC(i));
+        state[i][r][1] <== GlExtScalarMul()(wires[j * 2 + 1], MDS_MATRIX_CIRC(i));
+      }} else {{
+        state[i][r][0] <== GlExtAdd()(state[i - 1][r][0], GlExtScalarMul()(wires[j * 2], MDS_MATRIX_CIRC(i)));
+        state[i][r][1] <== GlExtAdd()(state[i - 1][r][1], GlExtScalarMul()(wires[j * 2 + 1], MDS_MATRIX_CIRC(i)));
+      }}
+    }}
+    state[12][r][0] <== GlExtAdd()(state[11][r][0], GlExtScalarMul()(wires[r * 2], MDS_MATRIX_DIAG(r)));
+    state[12][r][1] <== GlExtAdd()(state[11][r][1], GlExtScalarMul()(wires[r * 2 + 1], MDS_MATRIX_DIAG(r)));
+  }}
+
+  for (var r = 0; r < 12; r ++) {{
+    out[r * 2] <== ConstraintPush()(constraints[r * 2], filter, GlExtSub()(wires[(12 + r) * 2], state[12][r][0]));
+    out[r * 2 + 1] <== ConstraintPush()(constraints[r * 2 + 1], filter, GlExtSub()(wires[(12 + r) * 2 + 1], state[12][r][1]));
+  }}
+
+  for (var i = 24; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}"
+        ).to_string();
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        todo!()
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {

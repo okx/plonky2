@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::ops::Range;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -31,17 +35,17 @@ impl<const D: usize> ReducingGate<D> {
         (num_routed_wires - 3 * D).min((num_wires - 2 * D) / (D + 1))
     }
 
-    pub const fn wires_output() -> Range<usize> {
+    pub(crate) const fn wires_output() -> Range<usize> {
         0..D
     }
-    pub const fn wires_alpha() -> Range<usize> {
+    pub(crate) const fn wires_alpha() -> Range<usize> {
         D..2 * D
     }
-    pub const fn wires_old_acc() -> Range<usize> {
+    pub(crate) const fn wires_old_acc() -> Range<usize> {
         2 * D..3 * D
     }
     const START_COEFFS: usize = 3 * D;
-    pub const fn wires_coeffs(&self) -> Range<usize> {
+    pub(crate) const fn wires_coeffs(&self) -> Range<usize> {
         Self::START_COEFFS..Self::START_COEFFS + self.num_coeffs
     }
     const fn start_accs(&self) -> usize {
@@ -96,6 +100,79 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingGate<D
             .into_iter()
             .flat_map(|alg| alg.to_basefield_array())
             .collect()
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template Reducing$NUM_COEFFS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  var acc_start = 2 * $D;
+  signal m[$NUM_COEFFS][2][2];
+  for (var i = 0; i < $NUM_COEFFS; i++) {{
+    m[i] <== WiresAlgebraMul(acc_start, $D)(wires);
+    out[i * $D] <== ConstraintPush()(constraints[i * $D], filter, GlExtAdd()(m[i][0], GlExtSub()(wires[3 * $D + i], wires[r_wires_accs_start(i, $NUM_COEFFS)])));
+    for (var j = 1; j < $D; j++) {{
+      out[i * $D + j] <== ConstraintPush()(constraints[i * $D + j], filter, GlExtSub()(m[i][j], wires[r_wires_accs_start(i, $NUM_COEFFS) + j]));
+    }}
+    acc_start = r_wires_accs_start(i, $NUM_COEFFS);
+  }}
+
+  for (var i = $NUM_COEFFS * $D; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}
+function r_wires_accs_start(i, num_coeffs) {{
+  if (i == num_coeffs - 1) return 0;
+  else return (3 + i) * $D + num_coeffs;
+}}"
+        ).to_string();
+
+        template_str = template_str.replace("$NUM_COEFFS", &*self.num_coeffs.to_string());
+        template_str = template_str.replace("$D", &*D.to_string());
+
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "library Reducing$NUM_COEFFSLib {{
+    using GoldilocksFieldLib for uint64;
+    using GoldilocksExtLib for uint64[2];
+
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+
+    function wires_accs_start(uint32 i) internal pure returns(uint32) {{
+        if (i == $NUM_COEFFS - 1) return 0;
+        return (3 + i) * $D + $NUM_COEFFS;
+    }}
+
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        uint32 acc_start = 2 * $D;
+        for (uint32 i = 0; i < $NUM_COEFFS; i++) {{
+            uint64[2][$D] memory m = GatesUtilsLib.wires_algebra_mul(ev.wires, acc_start, $D);
+            GatesUtilsLib.push(constraints, ev.filter, i * $D, m[0].add(ev.wires[3 * $D + i].sub(ev.wires[wires_accs_start(i)])));
+            for (uint32 j = 1; j < $D; j++) {{
+                GatesUtilsLib.push(constraints, ev.filter, i * $D + j, m[j].sub(ev.wires[wires_accs_start(i) + j]));
+            }}
+            acc_start = wires_accs_start(i);
+        }}
+    }}
+}}"
+        )
+            .to_string();
+
+        template_str = template_str.replace("$NUM_COEFFS", &*self.num_coeffs.to_string());
+
+        template_str
     }
 
     fn eval_unfiltered_base_one(
@@ -178,7 +255,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingGate<D
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingGate<D>,

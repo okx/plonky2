@@ -1,6 +1,5 @@
-use alloc::string::{String, ToString};
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{format, string::String, vec, vec::Vec};
 use core::borrow::Borrow;
 
 use itertools::Itertools;
@@ -81,7 +80,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BaseSumGenerator<const B: usize> {
     row: usize,
     limbs: Vec<BoolTarget>,
@@ -91,7 +90,7 @@ impl<F: RichField + Extendable<D>, const B: usize, const D: usize> SimpleGenerat
     for BaseSumGenerator<B>
 {
     fn id(&self) -> String {
-        "BaseSumGenerator".to_string()
+        format!("BaseSumGenerator + Base: {B}")
     }
 
     fn dependencies(&self) -> Vec<Target> {

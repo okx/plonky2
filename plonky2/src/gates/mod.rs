@@ -30,8 +30,11 @@ pub mod constant;
 pub mod coset_interpolation;
 pub mod exponentiation;
 pub mod gate;
+pub mod high_degree_interpolation;
+pub mod interpolation;
 pub mod lookup;
 pub mod lookup_table;
+pub mod low_degree_interpolation;
 pub mod multiplication_extension;
 pub mod noop;
 pub mod packed_util;
@@ -41,7 +44,7 @@ pub mod public_input;
 pub mod random_access;
 pub mod reducing;
 pub mod reducing_extension;
-pub(crate) mod selectors;
+pub mod selectors;
 pub mod util;
 
 // Can't use #[cfg(test)] here because it needs to be visible to other crates.

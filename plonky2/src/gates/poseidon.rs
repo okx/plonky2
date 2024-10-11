@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 
 use crate::field::extension::Extendable;
@@ -35,23 +39,23 @@ impl<F: RichField + Extendable<D>, const D: usize> PoseidonGate<F, D> {
     }
 
     /// The wire index for the `i`th input to the permutation.
-    pub const fn wire_input(i: usize) -> usize {
+    pub(crate) const fn wire_input(i: usize) -> usize {
         i
     }
 
     /// The wire index for the `i`th output to the permutation.
-    pub const fn wire_output(i: usize) -> usize {
+    pub(crate) const fn wire_output(i: usize) -> usize {
         SPONGE_WIDTH + i
     }
 
     /// If this is set to 1, the first four inputs will be swapped with the next four inputs. This
     /// is useful for ordering hashes in Merkle proofs. Otherwise, this should be set to 0.
-    pub const WIRE_SWAP: usize = 2 * SPONGE_WIDTH;
+    pub(crate) const WIRE_SWAP: usize = 2 * SPONGE_WIDTH;
 
     const START_DELTA: usize = 2 * SPONGE_WIDTH + 1;
 
     /// A wire which stores `swap * (input[i + 4] - input[i])`; used to compute the swapped inputs.
-    fn wire_delta(i: usize) -> usize {
+    const fn wire_delta(i: usize) -> usize {
         assert!(i < 4);
         Self::START_DELTA + i
     }
@@ -60,7 +64,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PoseidonGate<F, D> {
 
     /// A wire which stores the input of the `i`-th S-box of the `round`-th round of the first set
     /// of full rounds.
-    fn wire_full_sbox_0(round: usize, i: usize) -> usize {
+    const fn wire_full_sbox_0(round: usize, i: usize) -> usize {
         debug_assert!(
             round != 0,
             "First round S-box inputs are not stored as wires"
@@ -74,7 +78,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PoseidonGate<F, D> {
         Self::START_FULL_0 + SPONGE_WIDTH * (poseidon::HALF_N_FULL_ROUNDS - 1);
 
     /// A wire which stores the input of the S-box of the `round`-th round of the partial rounds.
-    fn wire_partial_sbox(round: usize) -> usize {
+    const fn wire_partial_sbox(round: usize) -> usize {
         debug_assert!(round < poseidon::N_PARTIAL_ROUNDS);
         Self::START_PARTIAL + round
     }
@@ -83,7 +87,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PoseidonGate<F, D> {
 
     /// A wire which stores the input of the `i`-th S-box of the `round`-th round of the second set
     /// of full rounds.
-    fn wire_full_sbox_1(round: usize, i: usize) -> usize {
+    const fn wire_full_sbox_1(round: usize, i: usize) -> usize {
         debug_assert!(round < poseidon::HALF_N_FULL_ROUNDS);
         debug_assert!(i < SPONGE_WIDTH);
         Self::START_FULL_1 + SPONGE_WIDTH * round + i
@@ -110,6 +114,305 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for PoseidonGate<F
 
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         Ok(PoseidonGate::new())
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template Poseidon12() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  var index = 0;
+  out[index] <== ConstraintPush()(constraints[index], filter, GlExtMul()(wires[$WIRE_SWAP], GlExtSub()(wires[$WIRE_SWAP], GlExt(1, 0)())));
+  index++;
+
+  for (var i = 0; i < 4; i++) {{
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(GlExtMul()(wires[$WIRE_SWAP], GlExtSub()(wires[i + 4], wires[i])), wires[$START_DELTA + i]));
+    index++;
+  }}
+
+  // SPONGE_RATE = 8
+  // SPONGE_CAPACITY = 4
+  // SPONGE_WIDTH = 12
+  signal state[12][$HALF_N_FULL_ROUNDS * 8 + 2 + $N_PARTIAL_ROUNDS * 2][2];
+  var state_round = 0;
+  for (var i = 0; i < 4; i++) {{
+    state[i][state_round] <== GlExtAdd()(wires[i], wires[$START_DELTA + i]);
+    state[i + 4][state_round] <== GlExtSub()(wires[i + 4], wires[$START_DELTA + i]);
+  }}
+
+  for (var i = 8; i < 12; i++) {{
+    state[i][state_round] <== wires[i];
+  }}
+  state_round++;
+
+  var round_ctr = 0;
+  // First set of full rounds.
+  signal mds_row_shf_field[$HALF_N_FULL_ROUNDS][12][13][2];
+  for (var r = 0; r < $HALF_N_FULL_ROUNDS; r ++) {{
+    for (var i = 0; i < 12; i++) {{
+      state[i][state_round] <== GlExtAdd()(state[i][state_round - 1], GlExt(GL_CONST(i + 12 * round_ctr), 0)());
+    }}
+    state_round++;
+    if (r != 0 ) {{
+      for (var i = 0; i < 12; i++) {{
+        state[i][state_round] <== wires[$START_DELTA + 4 + 12 * (r - 1) + i];
+        out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(state[i][state_round - 1], state[i][state_round]));
+        index++;
+      }}
+      state_round++;
+    }}
+    for (var i = 0; i < 12; i++) {{
+      state[i][state_round] <== GlExtExpN(3)(state[i][state_round - 1], 7);
+    }}
+    state_round++;
+    for (var i = 0; i < 12; i++) {{ // for r
+      mds_row_shf_field[r][i][0][0] <== 0;
+      mds_row_shf_field[r][i][0][1] <== 0;
+      for (var j = 0; j < 12; j++) {{ // for i,
+        mds_row_shf_field[r][i][j + 1] <== GlExtAdd()(mds_row_shf_field[r][i][j], GlExtMul()(state[(i + j) < 12 ? (i + j) : (i + j - 12)][state_round - 1], GlExt(MDS_MATRIX_CIRC(j), 0)()));
+      }}
+      state[i][state_round] <== GlExtAdd()(mds_row_shf_field[r][i][12], GlExtMul()(state[i][state_round - 1], GlExt(MDS_MATRIX_DIAG(i), 0)()));
+    }}
+    state_round++;
+    round_ctr++;
+  }}
+
+  // Partial rounds.
+  for (var i = 0; i < 12; i++) {{
+    state[i][state_round] <== GlExtAdd()(state[i][state_round - 1], GlExt(FAST_PARTIAL_FIRST_ROUND_CONSTANT(i), 0)());
+  }}
+  state_round++;
+  component partial_res[11][11];
+  state[0][state_round] <== state[0][state_round - 1];
+  for (var r = 0; r < 11; r++) {{
+    for (var c = 0; c < 11; c++) {{
+      partial_res[r][c] = GlExtAdd();
+      if (r == 0) {{
+        partial_res[r][c].a <== GlExt(0, 0)();
+      }} else {{
+        partial_res[r][c].a <== partial_res[r - 1][c].out;
+      }}
+      partial_res[r][c].b <== GlExtMul()(state[r + 1][state_round - 1], GlExt(FAST_PARTIAL_ROUND_INITIAL_MATRIX(r, c), 0)());
+    }}
+  }}
+  for (var i = 1; i < 12; i++) {{
+    state[i][state_round] <== partial_res[10][i - 1].out;
+  }}
+  state_round++;
+
+  signal partial_d[12][$N_PARTIAL_ROUNDS][2];
+  for (var r = 0; r < $N_PARTIAL_ROUNDS; r++) {{
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(state[0][state_round - 1], wires[$START_PARTIAL + r]));
+    index++;
+    if (r == $N_PARTIAL_ROUNDS - 1) {{
+      state[0][state_round] <== GlExtExpN(3)(wires[$START_PARTIAL + r], 7);
+    }} else {{
+      state[0][state_round] <== GlExtAdd()(GlExt(FAST_PARTIAL_ROUND_CONSTANTS(r), 0)(), GlExtExpN(3)(wires[$START_PARTIAL + r], 7));
+    }}
+    for (var i = 1; i < 12; i++) {{
+      state[i][state_round] <== state[i][state_round - 1];
+    }}
+    partial_d[0][r] <== GlExtMul()(state[0][state_round], GlExt(MDS_MATRIX_CIRC(0) + MDS_MATRIX_DIAG(0), 0)());
+    for (var i = 1; i < 12; i++) {{
+      partial_d[i][r] <== GlExtAdd()(partial_d[i - 1][r], GlExtMul()(state[i][state_round], GlExt(FAST_PARTIAL_ROUND_W_HATS(r, i - 1), 0)()));
+    }}
+    state_round++;
+    state[0][state_round] <== partial_d[11][r];
+    for (var i = 1; i < 12; i++) {{
+      state[i][state_round] <== GlExtAdd()(state[i][state_round - 1], GlExtMul()(state[0][state_round - 1], GlExt(FAST_PARTIAL_ROUND_VS(r, i - 1), 0)()));
+    }}
+    state_round++;
+  }}
+  round_ctr += $N_PARTIAL_ROUNDS;
+
+  // Second set of full rounds.
+  signal mds_row_shf_field2[$HALF_N_FULL_ROUNDS][12][13][2];
+  for (var r = 0; r < $HALF_N_FULL_ROUNDS; r ++) {{
+    for (var i = 0; i < 12; i++) {{
+      state[i][state_round] <== GlExtAdd()(state[i][state_round - 1], GlExt(GL_CONST(i + 12 * round_ctr), 0)());
+    }}
+    state_round++;
+    for (var i = 0; i < 12; i++) {{
+      state[i][state_round] <== wires[$START_FULL_1 + 12 * r + i];
+      out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(state[i][state_round - 1], state[i][state_round]));
+      index++;
+    }}
+    state_round++;
+    for (var i = 0; i < 12; i++) {{
+      state[i][state_round] <== GlExtExpN(3)(state[i][state_round - 1], 7);
+    }}
+    state_round++;
+    for (var i = 0; i < 12; i++) {{ // for r
+      mds_row_shf_field2[r][i][0][0] <== 0;
+      mds_row_shf_field2[r][i][0][1] <== 0;
+      for (var j = 0; j < 12; j++) {{ // for i,
+        mds_row_shf_field2[r][i][j + 1] <== GlExtAdd()(mds_row_shf_field2[r][i][j], GlExtMul()(state[(i + j) < 12 ? (i + j) : (i + j - 12)][state_round - 1], GlExt(MDS_MATRIX_CIRC(j), 0)()));
+      }}
+      state[i][state_round] <== GlExtAdd()(mds_row_shf_field2[r][i][12], GlExtMul()(state[i][state_round - 1], GlExt(MDS_MATRIX_DIAG(i), 0)()));
+    }}
+    state_round++;
+    round_ctr++;
+  }}
+
+  for (var i = 0; i < 12; i++) {{
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(state[i][state_round - 1], wires[12 + i]));
+    index++;
+  }}
+
+  for (var i = index + 1; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}
+function FAST_PARTIAL_ROUND_W_HATS(i, j) {{
+  var value[$N_PARTIAL_ROUNDS][11];
+  $SET_FAST_PARTIAL_ROUND_W_HATS;
+  return value[i][j];
+}}
+function FAST_PARTIAL_ROUND_VS(i, j) {{
+  var value[$N_PARTIAL_ROUNDS][11];
+  $SET_FAST_PARTIAL_ROUND_VS;
+  return value[i][j];
+}}
+function FAST_PARTIAL_ROUND_INITIAL_MATRIX(i, j) {{
+  var value[11][11];
+  $SET_FAST_PARTIAL_ROUND_INITIAL_MATRIX;
+  return value[i][j];
+}}
+function FAST_PARTIAL_ROUND_CONSTANTS(i) {{
+  var value[$N_PARTIAL_ROUNDS];
+  $SET_FAST_PARTIAL_ROUND_CONSTANTS;
+  return value[i];
+}}
+function FAST_PARTIAL_FIRST_ROUND_CONSTANT(i) {{
+  var value[12];
+  $SET_FAST_PARTIAL_FIRST_ROUND_CONSTANT;
+  return value[i];
+}}
+function MDS_MATRIX_CIRC(i) {{
+  var mds[12];
+  $SET_MDS_MATRIX_CIRC;
+  return mds[i];
+}}
+function MDS_MATRIX_DIAG(i) {{
+  var mds[12];
+  $SET_MDS_MATRIX_DIAG;
+  return mds[i];
+}}"
+        ).to_string();
+        template_str = template_str.replace("$WIRE_SWAP", &*Self::WIRE_SWAP.to_string());
+        template_str = template_str.replace("$START_DELTA", &*Self::START_DELTA.to_string());
+        template_str = template_str.replace("$START_FULL_1", &*Self::START_FULL_1.to_string());
+        template_str = template_str.replace(
+            "$HALF_N_FULL_ROUNDS",
+            &*poseidon::HALF_N_FULL_ROUNDS.to_string(),
+        );
+        template_str = template_str.replace(
+            "$N_PARTIAL_ROUNDS",
+            &*poseidon::N_PARTIAL_ROUNDS.to_string(),
+        );
+        template_str = template_str.replace("$START_PARTIAL", &*Self::START_PARTIAL.to_string());
+
+        let mut partial_const_str = "".to_owned();
+        for i in 0..poseidon::N_PARTIAL_ROUNDS {
+            partial_const_str += &*("  value[".to_owned()
+                + &*i.to_string()
+                + "] = "
+                + &*<F as Poseidon>::FAST_PARTIAL_ROUND_CONSTANTS[i].to_string()
+                + ";\n");
+        }
+        template_str = template_str.replace(
+            "  $SET_FAST_PARTIAL_ROUND_CONSTANTS;\n",
+            &*partial_const_str,
+        );
+
+        let mut circ_str = "".to_owned();
+        for i in 0..12 {
+            circ_str += &*("  mds[".to_owned()
+                + &*i.to_string()
+                + "] = "
+                + &*<F as Poseidon>::MDS_MATRIX_CIRC[i].to_string()
+                + ";\n");
+        }
+        template_str = template_str.replace("  $SET_MDS_MATRIX_CIRC;\n", &*circ_str);
+
+        let mut diag_str = "".to_owned();
+        for i in 0..12 {
+            diag_str += &*("  mds[".to_owned()
+                + &*i.to_string()
+                + "] = "
+                + &*<F as Poseidon>::MDS_MATRIX_DIAG[i].to_string()
+                + ";\n");
+        }
+        template_str = template_str.replace("  $SET_MDS_MATRIX_DIAG;\n", &*diag_str);
+
+        let mut first_round_const_str = "".to_owned();
+        for i in 0..12 {
+            first_round_const_str += &*("  value[".to_owned()
+                + &*i.to_string()
+                + "] = "
+                + &*<F as Poseidon>::FAST_PARTIAL_FIRST_ROUND_CONSTANT[i].to_string()
+                + ";\n");
+        }
+        template_str = template_str.replace(
+            "  $SET_FAST_PARTIAL_FIRST_ROUND_CONSTANT;\n",
+            &*first_round_const_str,
+        );
+
+        let mut init_m_str = "".to_owned();
+        for i in 0..11 {
+            for j in 0..11 {
+                init_m_str += &*("  value[".to_owned()
+                    + &*i.to_string()
+                    + "]["
+                    + &*j.to_string()
+                    + "] = "
+                    + &*<F as Poseidon>::FAST_PARTIAL_ROUND_INITIAL_MATRIX[i][j].to_string()
+                    + ";\n");
+            }
+        }
+        template_str =
+            template_str.replace("  $SET_FAST_PARTIAL_ROUND_INITIAL_MATRIX;\n", &*init_m_str);
+
+        let mut partial_hats_str = "".to_owned();
+        for i in 0..poseidon::N_PARTIAL_ROUNDS {
+            for j in 0..11 {
+                partial_hats_str += &*("  value[".to_owned()
+                    + &*i.to_string()
+                    + "]["
+                    + &*j.to_string()
+                    + "] = "
+                    + &*<F as Poseidon>::FAST_PARTIAL_ROUND_W_HATS[i][j].to_string()
+                    + ";\n");
+            }
+        }
+        template_str =
+            template_str.replace("  $SET_FAST_PARTIAL_ROUND_W_HATS;\n", &*partial_hats_str);
+
+        let mut partial_vs_str = "".to_owned();
+        for i in 0..poseidon::N_PARTIAL_ROUNDS {
+            for j in 0..11 {
+                partial_vs_str += &*("  value[".to_owned()
+                    + &*i.to_string()
+                    + "]["
+                    + &*j.to_string()
+                    + "] = "
+                    + &*<F as Poseidon>::FAST_PARTIAL_ROUND_VS[i][j].to_string()
+                    + ";\n");
+            }
+        }
+        template_str = template_str.replace("  $SET_FAST_PARTIAL_ROUND_VS;\n", &*partial_vs_str);
+
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        todo!()
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
@@ -414,7 +717,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for PoseidonGate<F
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct PoseidonGenerator<F: RichField + Extendable<D> + Poseidon, const D: usize> {
     row: usize,
     _phantom: PhantomData<F>,
@@ -533,16 +836,12 @@ impl<F: RichField + Extendable<D> + Poseidon, const D: usize> SimpleGenerator<F,
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use plonky2_field::goldilocks_field::GoldilocksField;
 
-    use crate::field::goldilocks_field::GoldilocksField;
-    use crate::field::types::Field;
+    use super::*;
     use crate::gates::gate_testing::{test_eval_fns, test_low_degree};
-    use crate::gates::poseidon::PoseidonGate;
-    use crate::hash::poseidon::{Poseidon, SPONGE_WIDTH};
     use crate::iop::generator::generate_partial_witness;
-    use crate::iop::wire::Wire;
-    use crate::iop::witness::{PartialWitness, Witness, WitnessWrite};
-    use crate::plonk::circuit_builder::CircuitBuilder;
+    use crate::iop::witness::PartialWitness;
     use crate::plonk::circuit_data::CircuitConfig;
     use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
 

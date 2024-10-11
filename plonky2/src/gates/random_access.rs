@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::marker::PhantomData;
 
 use itertools::Itertools;
@@ -76,19 +80,19 @@ impl<F: RichField + Extendable<D>, const D: usize> RandomAccessGate<F, D> {
     }
 
     /// For each copy, a wire containing the claimed index of the element.
-    pub fn wire_access_index(&self, copy: usize) -> usize {
+    pub(crate) const fn wire_access_index(&self, copy: usize) -> usize {
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy
     }
 
     /// For each copy, a wire containing the element claimed to be at the index.
-    pub fn wire_claimed_element(&self, copy: usize) -> usize {
+    pub(crate) const fn wire_claimed_element(&self, copy: usize) -> usize {
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy + 1
     }
 
     /// For each copy, wires containing the entire list.
-    pub fn wire_list_item(&self, i: usize, copy: usize) -> usize {
+    pub(crate) const fn wire_list_item(&self, i: usize, copy: usize) -> usize {
         debug_assert!(i < self.vec_size());
         debug_assert!(copy < self.num_copies);
         (2 + self.vec_size()) * copy + 2 + i
@@ -98,7 +102,7 @@ impl<F: RichField + Extendable<D>, const D: usize> RandomAccessGate<F, D> {
         (2 + self.vec_size()) * self.num_copies
     }
 
-    fn wire_extra_constant(&self, i: usize) -> usize {
+    const fn wire_extra_constant(&self, i: usize) -> usize {
         debug_assert!(i < self.num_extra_constants);
         self.start_extra_constants() + i
     }
@@ -110,7 +114,7 @@ impl<F: RichField + Extendable<D>, const D: usize> RandomAccessGate<F, D> {
 
     /// An intermediate wire where the prover gives the (purported) binary decomposition of the
     /// index.
-    pub fn wire_bit(&self, i: usize, copy: usize) -> usize {
+    pub(crate) const fn wire_bit(&self, i: usize, copy: usize) -> usize {
         debug_assert!(i < self.bits);
         debug_assert!(copy < self.num_copies);
         self.num_routed_wires() + copy * self.bits + i
@@ -134,6 +138,131 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for RandomAccessGa
         let num_copies = src.read_usize()?;
         let num_extra_constants = src.read_usize()?;
         Ok(Self::new(num_copies, bits, num_extra_constants))
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template RandomAccessB$BITSC$NUM_COPIESE$NUM_EXTRA_CONSTANTS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  var index = 0;
+  signal acc[$NUM_COPIES][$BITS][2];
+  signal list_items[$NUM_COPIES][$BITS + 1][$VEC_SIZE][2];
+  for (var copy = 0; copy < $NUM_COPIES; copy++) {{
+    for (var i = 0; i < $BITS; i++) {{
+      out[index] <== ConstraintPush()(constraints[index], filter,
+        GlExtMul()(wires[ra_wire_bit(i, copy)], GlExtSub()(wires[ra_wire_bit(i, copy)], GlExt(1, 0)())));
+      index++;
+    }}
+    for (var i = $BITS; i > 0; i--) {{
+      if(i == $BITS) {{
+        acc[copy][i - 1] <== wires[ra_wire_bit(i - 1, copy)];
+      }} else {{
+        acc[copy][i - 1] <== GlExtAdd()(GlExtAdd()(acc[copy][i], acc[copy][i]), wires[ra_wire_bit(i - 1, copy)]);
+      }}
+    }}
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(acc[copy][0], wires[(2 + $VEC_SIZE) * copy]));
+    index++;
+    for (var i = 0; i < $VEC_SIZE; i++) {{
+      list_items[copy][0][i] <== wires[(2 + $VEC_SIZE) * copy + 2 + i];
+    }}
+    for (var i = 0; i < $BITS; i++) {{
+      for (var j = 0; j < ($VEC_SIZE >> i); j = j + 2) {{
+        list_items[copy][i + 1][j \\ 2] <== GlExtAdd()(list_items[copy][i][j], GlExtMul()(wires[ra_wire_bit(i, copy)], GlExtSub()(list_items[copy][i][j + 1], list_items[copy][i][j])));
+      }}
+    }}
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(list_items[copy][$BITS][0], wires[(2 + $VEC_SIZE) * copy + 1]));
+    index++;
+  }}
+  for (var i = 0; i < $NUM_EXTRA_CONSTANTS; i++) {{
+    out[index] <== ConstraintPush()(constraints[index], filter, GlExtSub()(constants[$NUM_SELECTORS + i], wires[(2 + $VEC_SIZE) * $NUM_COPIES + i]));
+    index++;
+  }}
+
+  for (var i = index; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}
+function ra_wire_bit(i, copy) {{
+  return $NUM_ROUTED_WIRES + copy * $BITS + i;
+}}"
+        ).to_string();
+        template_str = template_str.replace("$BITS", &*self.bits.to_string());
+        template_str = template_str.replace("$VEC_SIZE", &*self.vec_size().to_string());
+        template_str =
+            template_str.replace("$NUM_ROUTED_WIRES", &*self.num_routed_wires().to_string());
+        template_str = template_str.replace("$NUM_COPIES", &*self.num_copies.to_string());
+        template_str = template_str.replace(
+            "$NUM_EXTRA_CONSTANTS",
+            &*self.num_extra_constants.to_string(),
+        );
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "library RandomAccessB$BITSC$NUM_COPIESE$NUM_EXTRA_CONSTANTSLib {{
+    using GoldilocksExtLib for uint64[2];
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+    function wire_access_index(uint32 copy) internal pure returns (uint32) {{
+        return (2 + $VEC_SIZE) * copy;
+    }}
+    function wire_list_item(uint32 i, uint32 copy) internal pure returns (uint32) {{
+        return (2 + $VEC_SIZE) * copy + 2 + i;
+    }}
+    function wire_claimed_element(uint32 copy) internal pure returns (uint32) {{
+        return (2 + $VEC_SIZE) * copy + 1;
+    }}
+    function wire_bit(uint32 i, uint32 copy) internal pure returns (uint32) {{
+        return $NUM_ROUTED_WIRES + copy * $BITS + i;
+    }}
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        uint32 index = 0;
+        for (uint32 copy = 0; copy < $NUM_COPIES; copy++) {{
+            for (uint32 i = 0; i < $BITS; i++) {{
+                GatesUtilsLib.push(constraints, ev.filter, index++, ev.wires[wire_bit(i, copy)].mul(ev.wires[wire_bit(i, copy)].sub(GoldilocksExtLib.one())));
+            }}
+            uint64[2] memory acc;
+            for (uint32 i = $BITS; i > 0; i--) {{
+                acc = acc.add(acc).add(ev.wires[wire_bit(i - 1, copy)]);
+            }}
+            GatesUtilsLib.push(constraints, ev.filter, index++, acc.sub(ev.wires[wire_access_index(copy)]));
+            uint64[2][$VEC_SIZE] memory list_items;
+            for (uint32 i = 0; i < $VEC_SIZE; i++) {{
+                list_items[i] = ev.wires[wire_list_item(i, copy)];
+            }}
+            for (uint32 i = 0; i < $BITS; i++) {{
+                for (uint32 j = 0; j < ($VEC_SIZE >> i); j = j + 2) {{
+                    list_items[j / 2] = list_items[j].add(ev.wires[wire_bit(i, copy)].mul(list_items[j + 1].sub(list_items[j])));
+                }}
+            }}
+            GatesUtilsLib.push(constraints, ev.filter, index++, list_items[0].sub(ev.wires[wire_claimed_element(copy)]));
+        }}
+        for (uint32 i = 0; i < $NUM_EXTRA_CONSTANTS; i++) {{
+            GatesUtilsLib.push(constraints, ev.filter, index++, ev.constants[$NUM_SELECTORS + i].sub(ev.wires[(2 + $VEC_SIZE) * $NUM_COPIES + i]));
+        }}
+    }}
+}}"
+        )
+            .to_string();
+        template_str = template_str.replace("$BITS", &*self.bits.to_string());
+        template_str = template_str.replace("$VEC_SIZE", &*self.vec_size().to_string());
+        template_str =
+            template_str.replace("$NUM_ROUTED_WIRES", &*self.num_routed_wires().to_string());
+        template_str = template_str.replace("$NUM_COPIES", &*self.num_copies.to_string());
+        template_str = template_str.replace(
+            "$NUM_EXTRA_CONSTANTS",
+            &*self.num_extra_constants.to_string(),
+        );
+        template_str
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
@@ -338,7 +467,7 @@ impl<F: RichField + Extendable<D>, const D: usize> PackedEvaluableBase<F, D>
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct RandomAccessGenerator<F: RichField + Extendable<D>, const D: usize> {
     row: usize,
     gate: RandomAccessGate<F, D>,

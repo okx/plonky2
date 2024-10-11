@@ -1,12 +1,18 @@
 //! Implementation of the Poseidon hash function, as described in
 //! <https://eprint.iacr.org/2019/458.pdf>
 
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use core::fmt::Debug;
 
+use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
+#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
+use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
 use crate::gates::gate::Gate;
@@ -36,14 +42,14 @@ pub const N_ROUNDS: usize = N_FULL_ROUNDS_TOTAL + N_PARTIAL_ROUNDS;
 const MAX_WIDTH: usize = 12; // we only have width 8 and 12, and 12 is bigger. :)
 
 #[inline(always)]
-const fn add_u160_u128((x_lo, x_hi): (u128, u32), y: u128) -> (u128, u32) {
+pub(crate) const fn add_u160_u128((x_lo, x_hi): (u128, u32), y: u128) -> (u128, u32) {
     let (res_lo, over) = x_lo.overflowing_add(y);
     let res_hi = x_hi + (over as u32);
     (res_lo, res_hi)
 }
 
 #[inline(always)]
-fn reduce_u160<F: PrimeField64>((n_lo, n_hi): (u128, u32)) -> F {
+pub(crate) fn reduce_u160<F: PrimeField64>((n_lo, n_hi): (u128, u32)) -> F {
     let n_lo_hi = (n_lo >> 64) as u64;
     let n_lo_lo = n_lo as u64;
     let reduced_hi: u64 = F::from_noncanonical_u96((n_lo_hi, n_hi)).to_noncanonical_u64();
@@ -160,8 +166,9 @@ pub trait Poseidon: PrimeField64 {
     // times number of rounds.
     const N_ROUND_CONSTANTS: usize = SPONGE_WIDTH * N_ROUNDS;
 
-    // The MDS matrix we use is C + D, where C is the circulant matrix whose first row is given by
-    // `MDS_MATRIX_CIRC`, and D is the diagonal matrix whose diagonal is given by `MDS_MATRIX_DIAG`.
+    // The MDS matrix we use is C + D, where C is the circulant matrix whose first
+    // row is given by `MDS_MATRIX_CIRC`, and D is the diagonal matrix whose
+    // diagonal is given by `MDS_MATRIX_DIAG`.
     const MDS_MATRIX_CIRC: [u64; SPONGE_WIDTH];
     const MDS_MATRIX_DIAG: [u64; SPONGE_WIDTH];
 
@@ -209,6 +216,33 @@ pub trait Poseidon: PrimeField64 {
             res += v[(i + r) % SPONGE_WIDTH] * F::from_canonical_u64(Self::MDS_MATRIX_CIRC[i]);
         }
         res += v[r] * F::from_canonical_u64(Self::MDS_MATRIX_DIAG[r]);
+
+        res
+    }
+
+    /// Same as `mds_row_shf` for `PackedField`.
+    fn mds_row_shf_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        r: usize,
+        v: &[P; SPONGE_WIDTH],
+    ) -> P
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        debug_assert!(r < SPONGE_WIDTH);
+        let mut res = P::ZEROS;
+
+        for i in 0..SPONGE_WIDTH {
+            res +=
+                v[(i + r) % SPONGE_WIDTH] * P::Scalar::from_canonical_u64(Self::MDS_MATRIX_CIRC[i]);
+        }
+        res += v[r] * P::Scalar::from_canonical_u64(Self::MDS_MATRIX_DIAG[r]);
 
         res
     }
@@ -273,6 +307,29 @@ pub trait Poseidon: PrimeField64 {
         result
     }
 
+    /// Same as `mds_layer` for `PackedField`.
+    fn mds_layer_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        state: &[P; SPONGE_WIDTH],
+    ) -> [P; SPONGE_WIDTH]
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        let mut result = [P::ZEROS; SPONGE_WIDTH];
+
+        for r in 0..SPONGE_WIDTH {
+            result[r] = Self::mds_row_shf_packed_field(r, state);
+        }
+
+        result
+    }
+
     /// Recursive version of `mds_layer`.
     fn mds_layer_circuit<const D: usize>(
         builder: &mut CircuitBuilder<Self, D>,
@@ -316,6 +373,29 @@ pub trait Poseidon: PrimeField64 {
         for i in 0..12 {
             if i < SPONGE_WIDTH {
                 state[i] += F::from_canonical_u64(Self::FAST_PARTIAL_FIRST_ROUND_CONSTANT[i]);
+            }
+        }
+    }
+
+    /// Same as `partial_first_constant_layer` for `PackedField`.
+    #[inline(always)]
+    #[unroll_for_loops]
+    fn partial_first_constant_layer_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        state: &mut [P; SPONGE_WIDTH],
+    ) where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        for i in 0..12 {
+            if i < SPONGE_WIDTH {
+                state[i] +=
+                    P::Scalar::from_canonical_u64(Self::FAST_PARTIAL_FIRST_ROUND_CONSTANT[i]);
             }
         }
     }
@@ -365,6 +445,46 @@ pub trait Poseidon: PrimeField64 {
         result
     }
 
+    /// Same as `mds_partial_layer_init` for `PackedField`.
+    #[inline(always)]
+    #[unroll_for_loops]
+    fn mds_partial_layer_init_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        state: &[P; SPONGE_WIDTH],
+    ) -> [P; SPONGE_WIDTH]
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        let mut result = [P::ZEROS; SPONGE_WIDTH];
+
+        // Initial matrix has first row/column = [1, 0, ..., 0];
+
+        // c = 0
+        result[0] = state[0];
+
+        for r in 1..12 {
+            if r < SPONGE_WIDTH {
+                for c in 1..12 {
+                    if c < SPONGE_WIDTH {
+                        // NB: FAST_PARTIAL_ROUND_INITIAL_MATRIX is stored in
+                        // row-major order so that this dot product is cache
+                        // friendly.
+                        let t = P::Scalar::from_canonical_u64(
+                            Self::FAST_PARTIAL_ROUND_INITIAL_MATRIX[r - 1][c - 1],
+                        );
+                        result[c] += state[r] * t;
+                    }
+                }
+            }
+        }
+        result
+    }
     /// Recursive version of `mds_partial_layer_init`.
     fn mds_partial_layer_init_circuit<const D: usize>(
         builder: &mut CircuitBuilder<Self, D>,
@@ -449,6 +569,39 @@ pub trait Poseidon: PrimeField64 {
         result
     }
 
+    /// Same as `mds_partial_layer_fast` for `PackedField.
+    fn mds_partial_layer_fast_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        state: &[P; SPONGE_WIDTH],
+        r: usize,
+    ) -> [P; SPONGE_WIDTH]
+    where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        let s0 = state[0];
+        let mds0to0 = Self::MDS_MATRIX_CIRC[0] + Self::MDS_MATRIX_DIAG[0];
+        let mut d = s0 * P::Scalar::from_canonical_u64(mds0to0);
+        for i in 1..SPONGE_WIDTH {
+            let t = P::Scalar::from_canonical_u64(Self::FAST_PARTIAL_ROUND_W_HATS[r][i - 1]);
+            d += state[i] * t;
+        }
+
+        // result = [d] concat [state[0] * v + state[shift up by 1]]
+        let mut result = [P::ZEROS; SPONGE_WIDTH];
+        result[0] = d;
+        for i in 1..SPONGE_WIDTH {
+            let t = P::Scalar::from_canonical_u64(Self::FAST_PARTIAL_ROUND_VS[r][i - 1]);
+            result[i] = state[0] * t + state[i];
+        }
+        result
+    }
+
     /// Recursive version of `mds_partial_layer_fast`.
     fn mds_partial_layer_fast_circuit<const D: usize>(
         builder: &mut CircuitBuilder<Self, D>,
@@ -499,6 +652,26 @@ pub trait Poseidon: PrimeField64 {
     ) {
         for i in 0..SPONGE_WIDTH {
             state[i] += F::from_canonical_u64(ALL_ROUND_CONSTANTS[i + SPONGE_WIDTH * round_ctr]);
+        }
+    }
+
+    /// Same as `constant_layer` for PackedFields.
+    fn constant_layer_packed_field<
+        F: RichField + Extendable<D>,
+        const D: usize,
+        FE,
+        P,
+        const D2: usize,
+    >(
+        state: &mut [P; SPONGE_WIDTH],
+        round_ctr: usize,
+    ) where
+        FE: FieldExtension<D2, BaseField = F>,
+        P: PackedField<Scalar = FE>,
+    {
+        for i in 0..SPONGE_WIDTH {
+            state[i] +=
+                P::Scalar::from_canonical_u64(ALL_ROUND_CONSTANTS[i + SPONGE_WIDTH * round_ctr]);
         }
     }
 
@@ -596,6 +769,7 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
+    #[cfg(not(target_feature = "avx2"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         let mut state = input;
         let mut round_ctr = 0;
@@ -606,6 +780,18 @@ pub trait Poseidon: PrimeField64 {
         debug_assert_eq!(round_ctr, N_ROUNDS);
 
         state
+    }
+
+    #[inline]
+    #[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_avx(&input)
+    }
+
+    #[inline]
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
+        poseidon_avx512(&input)
     }
 
     // For testing only, to ensure that various tricks are correct.
@@ -714,6 +900,10 @@ impl<F: RichField> Hasher<F> for PoseidonHash {
         hash_n_to_hash_no_pad::<F, Self::Permutation>(input)
     }
 
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        PoseidonHash::hash_no_pad(input)
+    }
+
     fn two_to_one(left: Self::Hash, right: Self::Hash) -> Self::Hash {
         compress::<F, Self::Permutation>(left, right)
     }
@@ -750,14 +940,23 @@ impl<F: RichField> AlgebraicHasher<F> for PoseidonHash {
             (0..SPONGE_WIDTH).map(|i| Target::wire(gate, PoseidonGate::<F, D>::wire_output(i))),
         )
     }
+
+    fn public_inputs_hash<const D: usize>(
+        inputs: Vec<Target>,
+        builder: &mut CircuitBuilder<F, D>,
+    ) -> HashOutTarget
+    where
+        F: RichField + Extendable<D>,
+    {
+        HashOutTarget::from_vec(builder.hash_n_to_m_no_pad::<PoseidonHash>(inputs, 4))
+    }
 }
 
 #[cfg(test)]
 pub(crate) mod test_helpers {
-    use crate::field::types::Field;
-    use crate::hash::poseidon::{Poseidon, SPONGE_WIDTH};
+    use super::*;
 
-    pub(crate) fn check_test_vectors<F: Field>(
+    pub(crate) fn check_test_vectors<F>(
         test_vectors: Vec<([u64; SPONGE_WIDTH], [u64; SPONGE_WIDTH])>,
     ) where
         F: Poseidon,
@@ -775,7 +974,7 @@ pub(crate) mod test_helpers {
         }
     }
 
-    pub(crate) fn check_consistency<F: Field>()
+    pub(crate) fn check_consistency<F>()
     where
         F: Poseidon,
     {

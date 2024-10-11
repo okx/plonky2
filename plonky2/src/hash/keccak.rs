@@ -1,5 +1,5 @@
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{vec, vec::Vec};
 use core::mem::size_of;
 
 use itertools::Itertools;
@@ -123,5 +123,9 @@ impl<F: RichField, const N: usize> Hasher<F> for KeccakHash<N> {
         let mut arr = [0; N];
         arr.copy_from_slice(&keccak(v).0[..N]);
         BytesHash(arr)
+    }
+
+    fn hash_public_inputs(input: &[F]) -> Self::Hash {
+        KeccakHash::hash_no_pad(input)
     }
 }

@@ -4,14 +4,14 @@ pub mod generator_serialization;
 #[macro_use]
 pub mod gate_serialization;
 
-use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{collections::BTreeMap, sync::Arc, vec, vec::Vec};
 use core::convert::Infallible;
 use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use core::ops::Range;
+#[cfg(feature = "std")]
+use std::{collections::BTreeMap};
 
 pub use gate_serialization::default::DefaultGateSerializer;
 pub use gate_serialization::GateSerializer;
@@ -321,21 +321,22 @@ pub trait Read {
         H: Hasher<F>,
     {
         let leaves_len = self.read_usize()?;
-        let mut leaves = Vec::with_capacity(leaves_len);
+        let leaf_len = self.read_usize()?;
+        let mut leaves_2d = Vec::with_capacity(leaves_len * leaf_len);
         for _ in 0..leaves_len {
-            let leaf_len = self.read_usize()?;
-            leaves.push(self.read_field_vec(leaf_len)?);
+            // let leaf_len = self.read_usize()?;
+            leaves_2d.push(self.read_field_vec(leaf_len)?);
         }
+
+        let leaves_1d = leaves_2d.into_iter().flatten().collect();
 
         let digests_len = self.read_usize()?;
         let digests = self.read_hash_vec::<F, H>(digests_len)?;
         let cap_height = self.read_usize()?;
         let cap = self.read_merkle_cap::<F, H>(cap_height)?;
-        Ok(MerkleTree {
-            leaves,
-            digests,
-            cap,
-        })
+        Ok(MerkleTree::new_from_fields(
+            leaves_1d, leaf_len, digests, cap,
+        ))
     }
 
     /// Reads a value of type [`OpeningSet`] from `self` with the given `common_data`.
@@ -354,8 +355,6 @@ pub trait Read {
         let wires = self.read_field_ext_vec::<F, D>(config.num_wires)?;
         let plonk_zs = self.read_field_ext_vec::<F, D>(config.num_challenges)?;
         let plonk_zs_next = self.read_field_ext_vec::<F, D>(config.num_challenges)?;
-        let lookup_zs = self.read_field_ext_vec::<F, D>(common_data.num_all_lookup_polys())?;
-        let lookup_zs_next = self.read_field_ext_vec::<F, D>(common_data.num_all_lookup_polys())?;
         let partial_products = self
             .read_field_ext_vec::<F, D>(common_data.num_partial_products * config.num_challenges)?;
         let quotient_polys = self.read_field_ext_vec::<F, D>(
@@ -369,8 +368,6 @@ pub trait Read {
             plonk_zs_next,
             partial_products,
             quotient_polys,
-            lookup_zs,
-            lookup_zs_next,
         })
     }
 
@@ -382,8 +379,8 @@ pub trait Read {
         let wires = self.read_target_ext_vec::<D>()?;
         let plonk_zs = self.read_target_ext_vec::<D>()?;
         let plonk_zs_next = self.read_target_ext_vec::<D>()?;
-        let lookup_zs = self.read_target_ext_vec::<D>()?;
-        let next_lookup_zs = self.read_target_ext_vec::<D>()?;
+        let _lookup_zs = self.read_target_ext_vec::<D>()?;
+        let _next_lookup_zs = self.read_target_ext_vec::<D>()?;
         let partial_products = self.read_target_ext_vec::<D>()?;
         let quotient_polys = self.read_target_ext_vec::<D>()?;
 
@@ -393,8 +390,8 @@ pub trait Read {
             wires,
             plonk_zs,
             plonk_zs_next,
-            lookup_zs,
-            next_lookup_zs,
+            // lookup_zs,
+            // next_lookup_zs,
             partial_products,
             quotient_polys,
         })
@@ -450,9 +447,7 @@ pub trait Read {
         evals_proofs.push((wires_v, wires_p));
 
         let zs_partial_v = self.read_field_vec(
-            config.num_challenges
-                * (1 + common_data.num_partial_products + common_data.num_lookup_polys)
-                + salt,
+            config.num_challenges * (1 + common_data.num_partial_products) + salt,
         )?;
         let zs_partial_p = self.read_merkle_proof()?;
         evals_proofs.push((zs_partial_v, zs_partial_p));
@@ -764,14 +759,14 @@ pub trait Read {
 
         let num_partial_products = self.read_usize()?;
 
-        let num_lookup_polys = self.read_usize()?;
-        let num_lookup_selectors = self.read_usize()?;
-        let length = self.read_usize()?;
-        let mut luts = Vec::with_capacity(length);
+        // let _num_lookup_polys = self.read_usize()?;
+        // let _num_lookup_selectors = self.read_usize()?;
+        // let length = self.read_usize()?;
+        // let mut luts = Vec::with_capacity(length);
 
-        for _ in 0..length {
-            luts.push(Arc::new(self.read_lut()?));
-        }
+        // for _ in 0..length {
+        //     luts.push(Arc::new(self.read_lut()?));
+        // }
 
         let gates_len = self.read_usize()?;
         let mut gates = Vec::with_capacity(gates_len);
@@ -789,9 +784,9 @@ pub trait Read {
             num_public_inputs,
             k_is,
             num_partial_products,
-            num_lookup_polys,
-            num_lookup_selectors,
-            luts,
+            // num_lookup_polys,
+            // num_lookup_selectors,
+            // luts,
         };
 
         for _ in 0..gates_len {
@@ -901,8 +896,8 @@ pub trait Read {
             representative_map,
             fft_root_table,
             circuit_digest,
-            lookup_rows,
-            lut_to_lookups,
+            // lookup_rows,
+            // lut_to_lookups,
         })
     }
 
@@ -1419,10 +1414,12 @@ pub trait Write {
         F: RichField,
         H: Hasher<F>,
     {
-        self.write_usize(tree.leaves.len())?;
-        for i in 0..tree.leaves.len() {
-            self.write_usize(tree.leaves[i].len())?;
-            self.write_field_vec(&tree.leaves[i])?;
+        let leaves_count = tree.get_leaves_count();
+        self.write_usize(leaves_count)?;
+        self.write_usize(tree.leaf_size)?;
+        for i in 0..leaves_count {
+            // self.write_usize(tree.leaf_size)?;
+            self.write_field_vec(&tree.get(i))?;
         }
         self.write_hash_vec::<F, H>(&tree.digests)?;
         self.write_usize(tree.cap.height())?;
@@ -1442,8 +1439,8 @@ pub trait Write {
         self.write_field_ext_vec::<F, D>(&os.wires)?;
         self.write_field_ext_vec::<F, D>(&os.plonk_zs)?;
         self.write_field_ext_vec::<F, D>(&os.plonk_zs_next)?;
-        self.write_field_ext_vec::<F, D>(&os.lookup_zs)?;
-        self.write_field_ext_vec::<F, D>(&os.lookup_zs_next)?;
+        // self.write_field_ext_vec::<F, D>(&os.lookup_zs)?;
+        // self.write_field_ext_vec::<F, D>(&os.lookup_zs_next)?;
         self.write_field_ext_vec::<F, D>(&os.partial_products)?;
         self.write_field_ext_vec::<F, D>(&os.quotient_polys)
     }
@@ -1459,8 +1456,8 @@ pub trait Write {
         self.write_target_ext_vec::<D>(&os.wires)?;
         self.write_target_ext_vec::<D>(&os.plonk_zs)?;
         self.write_target_ext_vec::<D>(&os.plonk_zs_next)?;
-        self.write_target_ext_vec::<D>(&os.lookup_zs)?;
-        self.write_target_ext_vec::<D>(&os.next_lookup_zs)?;
+        // self.write_target_ext_vec::<D>(&os.lookup_zs)?;
+        // self.write_target_ext_vec::<D>(&os.next_lookup_zs)?;
         self.write_target_ext_vec::<D>(&os.partial_products)?;
         self.write_target_ext_vec::<D>(&os.quotient_polys)
     }
@@ -1778,9 +1775,9 @@ pub trait Write {
             num_public_inputs,
             k_is,
             num_partial_products,
-            num_lookup_polys,
-            num_lookup_selectors,
-            luts,
+            // num_lookup_polys,
+            // num_lookup_selectors,
+            // luts,
         } = common_data;
 
         self.write_circuit_config(config)?;
@@ -1797,12 +1794,12 @@ pub trait Write {
 
         self.write_usize(*num_partial_products)?;
 
-        self.write_usize(*num_lookup_polys)?;
-        self.write_usize(*num_lookup_selectors)?;
-        self.write_usize(luts.len())?;
-        for lut in luts.iter() {
-            self.write_lut(lut)?;
-        }
+        // self.write_usize(*num_lookup_polys)?;
+        // self.write_usize(*num_lookup_selectors)?;
+        // self.write_usize(luts.len())?;
+        // for lut in luts.iter() {
+        //     self.write_lut(lut)?;
+        // }
 
         self.write_usize(gates.len())?;
         for gate in gates.iter() {
@@ -1851,8 +1848,8 @@ pub trait Write {
             representative_map,
             fft_root_table,
             circuit_digest,
-            lookup_rows,
-            lut_to_lookups,
+            // lookup_rows,
+            // lut_to_lookups,
         } = prover_only_circuit_data;
 
         self.write_usize(generators.len())?;
@@ -1891,17 +1888,17 @@ pub trait Write {
 
         self.write_hash::<F, <C as GenericConfig<D>>::Hasher>(*circuit_digest)?;
 
-        self.write_usize(lookup_rows.len())?;
-        for wire in lookup_rows.iter() {
-            self.write_usize(wire.last_lu_gate)?;
-            self.write_usize(wire.last_lut_gate)?;
-            self.write_usize(wire.first_lut_gate)?;
-        }
+        // self.write_usize(lookup_rows.len())?;
+        // for wire in lookup_rows.iter() {
+        //     self.write_usize(wire.last_lu_gate)?;
+        //     self.write_usize(wire.last_lut_gate)?;
+        //     self.write_usize(wire.first_lut_gate)?;
+        // }
 
-        self.write_usize(lut_to_lookups.len())?;
-        for tlut in lut_to_lookups.iter() {
-            self.write_target_lut(tlut)?;
-        }
+        // self.write_usize(lut_to_lookups.len())?;
+        // for tlut in lut_to_lookups.iter() {
+        //     self.write_target_lut(tlut)?;
+        // }
 
         Ok(())
     }
@@ -2011,7 +2008,8 @@ pub trait Write {
             public_inputs,
         } = proof_with_pis;
         self.write_proof(proof)?;
-        self.write_usize(public_inputs.len())?;
+        // NOTE: circom_compatability
+        // self.write_usize(public_inputs.len())?;
         self.write_field_vec(public_inputs)
     }
 

@@ -1,5 +1,5 @@
-use alloc::string::String;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{string::String, vec::Vec};
 use core::ops::Range;
 
 use crate::field::extension::Extendable;
@@ -19,10 +19,11 @@ use crate::plonk::vars::{
 use crate::util::serialization::{Buffer, IoResult};
 
 /// A gate whose first four wires will be equal to a hash of public inputs.
+#[derive(Debug)]
 pub struct PublicInputGate;
 
 impl PublicInputGate {
-    pub const fn wires_public_inputs_hash() -> Range<usize> {
+    pub(crate) const fn wires_public_inputs_hash() -> Range<usize> {
         0..4
     }
 }
@@ -42,6 +43,46 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for PublicInputGat
 
     fn deserialize(_src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         Ok(Self)
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        format!(
+            "template PublicInputGateLib() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  signal hashes[4][2];
+  for (var i = 0; i < 4; i++) {{
+    hashes[i][0] <== public_input_hash[i];
+    hashes[i][1] <== 0;
+    out[i] <== ConstraintPush()(constraints[i], filter, GlExtSub()(wires[i], hashes[i]));
+  }}
+  for (var i = 4; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}"
+        )
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        format!(
+        "library PublicInputGateLib {{
+    using GoldilocksExtLib for uint64[2];
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        for (uint32 i = 0; i < 4; i++) {{
+            GatesUtilsLib.push(constraints, ev.filter, i, ev.wires[i].sub(ev.public_input_hash[i]));
+        }}
+    }}
+}}"
+        )
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {

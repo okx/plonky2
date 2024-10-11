@@ -1,5 +1,6 @@
 //! Utility module for helper methods and plonky2 serialization logic.
 
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 use plonky2_maybe_rayon::*;
@@ -15,6 +16,9 @@ pub mod reducing;
 pub mod serialization;
 pub mod strided_view;
 pub mod timing;
+
+#[cfg(feature = "papi")]
+pub(crate) mod papi;
 
 pub(crate) fn transpose_poly_values<F: Field>(polys: Vec<PolynomialValues<F>>) -> Vec<Vec<F>> {
     let poly_values = polys.into_iter().map(|p| p.values).collect::<Vec<_>>();
@@ -41,6 +45,10 @@ pub(crate) const fn reverse_bits(n: usize, num_bits: usize) -> usize {
 
 #[cfg(test)]
 mod tests {
+
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
+
     use super::*;
 
     #[test]

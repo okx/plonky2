@@ -1,5 +1,6 @@
 #![allow(clippy::int_plus_one)] // Makes more sense for some inequalities below.
 
+#[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 
 use anyhow::{ensure, Result};
@@ -198,6 +199,9 @@ where
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(feature = "std"))]
+    use alloc::vec;
+
     use anyhow::Result;
 
     use crate::field::extension::Extendable;
@@ -227,7 +231,7 @@ mod tests {
         let data = builder.build::<C>();
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config);
-        let proof = builder.add_virtual_proof_with_pis(&data.common);
+        let proof = builder.add_virtual_proof_with_pis::<C>(&data.common);
         let verifier_data =
             builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
         builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
@@ -235,7 +239,7 @@ mod tests {
 
         let config = CircuitConfig::standard_recursion_config();
         let mut builder = CircuitBuilder::<F, D>::new(config);
-        let proof = builder.add_virtual_proof_with_pis(&data.common);
+        let proof = builder.add_virtual_proof_with_pis::<C>(&data.common);
         let verifier_data =
             builder.add_virtual_verifier_data(data.common.config.fri_config.cap_height);
         builder.verify_proof::<C>(&proof, &verifier_data, &data.common);
@@ -277,7 +281,7 @@ mod tests {
         let condition = builder.add_virtual_bool_target_safe();
 
         // Unpack inner proof's public inputs.
-        let inner_cyclic_proof_with_pis = builder.add_virtual_proof_with_pis(&common_data);
+        let inner_cyclic_proof_with_pis = builder.add_virtual_proof_with_pis::<C>(&common_data);
         let inner_cyclic_pis = &inner_cyclic_proof_with_pis.public_inputs;
         let inner_cyclic_initial_hash = HashOutTarget::try_from(&inner_cyclic_pis[0..4]).unwrap();
         let inner_cyclic_latest_hash = HashOutTarget::try_from(&inner_cyclic_pis[4..8]).unwrap();

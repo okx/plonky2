@@ -7,7 +7,7 @@ use core::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAss
 
 use num::bigint::BigUint;
 use num::{Integer, One, ToPrimitive, Zero};
-use plonky2_util::{bits_u64};
+use plonky2_util::bits_u64;
 use rand::rngs::OsRng;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -15,8 +15,6 @@ use serde::Serialize;
 use crate::extension::Frobenius;
 use crate::fft::FftRootTable;
 use crate::ops::Square;
-
-
 
 /// Sampling
 pub trait Sample: Sized {
@@ -277,10 +275,7 @@ pub trait Field:
         base.exp_power_of_2(Self::TWO_ADICITY - n_log)
     }
 
-    fn pre_compute_fft_root_table(
-        _: usize,
-    ) -> Option<&'static FftRootTable<Self>>
-     {
+    fn pre_compute_fft_root_table(_: usize) -> Option<&'static FftRootTable<Self>> {
         None
     }
 
@@ -576,7 +571,7 @@ pub trait PrimeField64: PrimeField + Field64 {
 }
 
 /// An iterator over the powers of a certain base element `b`: `b^0, b^1, b^2, ...`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Powers<F: Field> {
     base: F,
     current: F,

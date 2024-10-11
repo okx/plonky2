@@ -11,3 +11,8 @@ pgo-data.profdata
 
 **/generated
 docs/**bench**
+
+**/*/libposeidon-permute-c-mac.a
+**/*/go-iden3-crypto/
+node_modules
+.vscode

@@ -1,6 +1,10 @@
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
-use alloc::{format, vec};
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use core::ops::Range;
 
 use crate::field::extension::{Extendable, FieldExtension};
@@ -33,23 +37,23 @@ impl<const D: usize> ReducingExtensionGate<D> {
         ((num_routed_wires - 3 * D) / D).min((num_wires - 2 * D) / (D * 2))
     }
 
-    pub const fn wires_output() -> Range<usize> {
+    pub(crate) const fn wires_output() -> Range<usize> {
         0..D
     }
-    pub const fn wires_alpha() -> Range<usize> {
+    pub(crate) const fn wires_alpha() -> Range<usize> {
         D..2 * D
     }
-    pub const fn wires_old_acc() -> Range<usize> {
+    pub(crate) const fn wires_old_acc() -> Range<usize> {
         2 * D..3 * D
     }
     const START_COEFFS: usize = 3 * D;
-    pub const fn wires_coeff(i: usize) -> Range<usize> {
+    pub(crate) const fn wires_coeff(i: usize) -> Range<usize> {
         Self::START_COEFFS + i * D..Self::START_COEFFS + (i + 1) * D
     }
     const fn start_accs(&self) -> usize {
         Self::START_COEFFS + self.num_coeffs * D
     }
-    fn wires_accs(&self, i: usize) -> Range<usize> {
+    const fn wires_accs(&self, i: usize) -> Range<usize> {
         debug_assert!(i < self.num_coeffs);
         if i == self.num_coeffs - 1 {
             // The last accumulator is the output.
@@ -75,6 +79,77 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingExtens
     {
         let num_coeffs = src.read_usize()?;
         Ok(Self::new(num_coeffs))
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template ReducingExtension$NUM_COEFFS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  var acc_start = 2 * $D;
+  signal m[$NUM_COEFFS][2][2];
+  for (var i = 0; i < $NUM_COEFFS; i++) {{
+    m[i] <== WiresAlgebraMul(acc_start, $D)(wires);
+    for (var j = 0; j < $D; j++) {{
+      out[i * $D + j] <== ConstraintPush()(constraints[i * $D + j], filter, GlExtAdd()(m[i][j], GlExtSub()(wires[(3 + i) * $D + j], wires[re_wires_accs_start(i, $NUM_COEFFS) + j])));
+    }}
+    acc_start = re_wires_accs_start(i, $NUM_COEFFS);
+  }}
+
+  for (var i = $NUM_COEFFS * $D; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}
+function re_wires_accs_start(i, num_coeffs) {{
+  if (i == num_coeffs - 1) return 0;
+  else return (3 + i + num_coeffs) * $D;
+}}"
+        ).to_string();
+
+        template_str = template_str.replace("$NUM_COEFFS", &*self.num_coeffs.to_string());
+        template_str = template_str.replace("$D", &*D.to_string());
+
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "library ReducingExtension$NUM_COEFFSLib {{
+    using GoldilocksFieldLib for uint64;
+    using GoldilocksExtLib for uint64[2];
+
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+
+    function wires_accs_start(uint32 i) internal pure returns(uint32) {{
+        if (i == $NUM_COEFFS - 1) return 0;
+        return (3 + i + $NUM_COEFFS) * $D;
+    }}
+
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        uint32 acc_start = 2 * $D;
+        for (uint32 i = 0; i < $NUM_COEFFS; i++) {{
+            uint64[2][$D] memory m = GatesUtilsLib.wires_algebra_mul(ev.wires, acc_start, $D);
+            for (uint32 j = 0; j < $D; j++) {{
+                GatesUtilsLib.push(constraints, ev.filter, i * $D + j, m[j].add(ev.wires[(3 + i) * $D + j].sub(ev.wires[wires_accs_start(i) + j])));
+            }}
+            acc_start = wires_accs_start(i);
+        }}
+    }}
+}}"
+        )
+            .to_string();
+
+        template_str = template_str.replace("$NUM_COEFFS", &*self.num_coeffs.to_string());
+
+        template_str
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {
@@ -178,7 +253,7 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ReducingExtens
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ReducingGenerator<const D: usize> {
     row: usize,
     gate: ReducingExtensionGate<D>,

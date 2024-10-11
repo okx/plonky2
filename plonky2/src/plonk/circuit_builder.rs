@@ -1,17 +1,14 @@
 //! Logic for building plonky2 circuits.
 
-use alloc::collections::BTreeMap;
-use alloc::sync::Arc;
-use alloc::vec;
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{collections::BTreeMap, sync::Arc, vec, vec::Vec};
 use core::cmp::max;
 #[cfg(feature = "std")]
-use std::time::Instant;
+use std::{collections::BTreeMap, sync::Arc, time::Instant};
 
 use hashbrown::{HashMap, HashSet};
 use itertools::Itertools;
 use log::{debug, info, warn, Level};
-use plonky2_util::ceil_div_usize;
 
 use crate::field::cosets::get_unique_coset_shifts;
 use crate::field::extension::{Extendable, FieldExtension};
@@ -27,11 +24,11 @@ use crate::gates::arithmetic_base::ArithmeticGate;
 use crate::gates::arithmetic_extension::ArithmeticExtensionGate;
 use crate::gates::constant::ConstantGate;
 use crate::gates::gate::{CurrentSlot, Gate, GateInstance, GateRef};
-use crate::gates::lookup::{Lookup, LookupGate};
+use crate::gates::lookup::Lookup;
 use crate::gates::lookup_table::LookupTable;
 use crate::gates::noop::NoopGate;
 use crate::gates::public_input::PublicInputGate;
-use crate::gates::selectors::{selector_ends_lookups, selector_polynomials, selectors_lookup};
+use crate::gates::selectors::selector_polynomials;
 use crate::hash::hash_types::{HashOut, HashOutTarget, MerkleCapTarget, RichField};
 use crate::hash::merkle_proofs::MerkleProofTarget;
 use crate::hash::merkle_tree::MerkleCap;
@@ -65,6 +62,7 @@ pub const NUM_COINS_LOOKUP: usize = 4;
 /// `ChallengeB` is used for the linear combination of input and output pairs in the polynomial RE.
 /// `ChallengeAlpha` is used for the running sums: 1/(alpha - combo_i).
 /// `ChallengeDelta` is a challenge on which to evaluate the interpolated LUT function.
+#[derive(Debug)]
 pub enum LookupChallenges {
     ChallengeA = 0,
     ChallengeB = 1,
@@ -137,6 +135,7 @@ pub struct LookupWire {
 /// // Verify the proof
 /// assert!(circuit_data.verify(proof).is_ok());
 /// ```
+#[derive(Debug, Clone)]
 pub struct CircuitBuilder<F: RichField + Extendable<D>, const D: usize> {
     /// Circuit configuration to be used by this [`CircuitBuilder`].
     pub config: CircuitConfig,
@@ -339,10 +338,15 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         [0; N].map(|_| self.add_virtual_target())
     }
 
-    /// Adds a new `HashOutTarget`. `NUM_HASH_OUT_ELTS` being hardcoded to 4, it internally
-    /// adds 4 virtual targets in a vector fashion.
+    /// Adds a new `HashOutTarget`.
     pub fn add_virtual_hash(&mut self) -> HashOutTarget {
-        HashOutTarget::from_vec(self.add_virtual_targets(4))
+        HashOutTarget::from(self.add_virtual_target_arr::<4>())
+    }
+
+    /// Registers a new `HashOutTarget` as a public input, adding
+    /// internally `NUM_HASH_OUT_ELTS` virtual targets.
+    pub fn add_virtual_hash_public_input(&mut self) -> HashOutTarget {
+        HashOutTarget::from(self.add_virtual_public_input_arr::<4>())
     }
 
     /// Adds a new `MerkleCapTarget`, consisting in `1 << cap_height` `HashOutTarget`.
@@ -353,6 +357,13 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
     /// Adds `n` new `HashOutTarget` in a vector fashion.
     pub fn add_virtual_hashes(&mut self, n: usize) -> Vec<HashOutTarget> {
         (0..n).map(|_i| self.add_virtual_hash()).collect()
+    }
+
+    /// Registers `n` new `HashOutTarget` as public inputs, in a vector fashion.
+    pub fn add_virtual_hashes_public_input(&mut self, n: usize) -> Vec<HashOutTarget> {
+        (0..n)
+            .map(|_i| self.add_virtual_hash_public_input())
+            .collect()
     }
 
     pub(crate) fn add_virtual_merkle_proof(&mut self, len: usize) -> MerkleProofTarget {
@@ -432,6 +443,8 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 
     /// Adds a gate to the circuit, and returns its index.
     pub fn add_gate<G: Gate<F, D>>(&mut self, gate_type: G, mut constants: Vec<F>) -> usize {
+        // println!("add gate: {:?}", gate_type.id());
+
         self.check_gate_compatibility(&gate_type);
 
         assert!(
@@ -1031,7 +1044,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
 
     pub fn try_build_with_options<C: GenericConfig<D, F = F>>(
         mut self,
-        commit_to_sigma: bool,
+        _commit_to_sigma: bool,
     ) -> (CircuitData<F, C, D>, bool) {
         let mut timing = TimingTree::new("preprocess", Level::Trace);
 
@@ -1041,12 +1054,14 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let rate_bits = self.config.fri_config.rate_bits;
         let cap_height = self.config.fri_config.cap_height;
         // Total number of LUTs.
-        let num_luts = self.get_luts_length();
+        // let num_luts = self.get_luts_length();
         // Hash the public inputs, and route them to a `PublicInputGate` which will enforce that
         // those hash wires match the claimed public inputs.
         let num_public_inputs = self.public_inputs.len();
+        // let public_inputs_hash =
+        //     self.hash_n_to_hash_no_pad::<C::InnerHasher>(self.public_inputs.clone());
         let public_inputs_hash =
-            self.hash_n_to_hash_no_pad::<C::InnerHasher>(self.public_inputs.clone());
+            self.public_inputs_hash::<C::InnerHasher>(self.public_inputs.clone());
         let pi_gate = self.add_gate(PublicInputGate, vec![]);
         for (&hash_part, wire) in public_inputs_hash
             .elements
@@ -1058,7 +1073,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         self.randomize_unused_pi_wires(pi_gate);
 
         // Place LUT-related gates.
-        self.add_all_lookups();
+        // self.add_all_lookups();
 
         // Make sure we have enough constant generators. If not, add a `ConstantGate`.
         while self.constants_to_targets.len() > self.constant_generators.len() {
@@ -1069,7 +1084,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
                 vec![],
             );
         }
-
         // For each constant-target pair used in the circuit, use a constant generator to fill this target.
         for ((c, t), mut const_gen) in self
             .constants_to_targets
@@ -1109,20 +1123,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         gates.sort_unstable_by_key(|g| (g.0.degree(), g.0.id()));
         let (mut constant_vecs, selectors_info) =
             selector_polynomials(&gates, &self.gate_instances, quotient_degree_factor + 1);
-
-        // Get the lookup selectors.
-        let num_lookup_selectors = if num_luts != 0 {
-            let selector_lookups =
-                selectors_lookup(&gates, &self.gate_instances, &self.lookup_rows);
-            let selector_ends = selector_ends_lookups(&self.lookup_rows, &self.gate_instances);
-            let all_lookup_selectors = [selector_lookups, selector_ends].concat();
-            let num_lookup_selectors = all_lookup_selectors.len();
-            constant_vecs.extend(all_lookup_selectors);
-            num_lookup_selectors
-        } else {
-            0
-        };
-
         constant_vecs.extend(self.constant_polys());
         let num_constants = constant_vecs.len();
 
@@ -1139,20 +1139,15 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let max_fft_points = 1 << (degree_bits + max(rate_bits, log2_ceil(quotient_degree_factor)));
         let fft_root_table = fft_root_table(max_fft_points);
 
-        let constants_sigmas_commitment = if commit_to_sigma {
-            let constants_sigmas_vecs = [constant_vecs, sigma_vecs.clone()].concat();
-            PolynomialBatch::<F, C, D>::from_values(
-                constants_sigmas_vecs,
-                rate_bits,
-                PlonkOracle::CONSTANTS_SIGMAS.blinding,
-                cap_height,
-                &mut timing,
-                Some(&fft_root_table),
-            )
-        } else {
-            PolynomialBatch::<F, C, D>::default()
-        };
-
+        let constants_sigmas_vecs = [constant_vecs, sigma_vecs.clone()].concat();
+        let constants_sigmas_commitment = PolynomialBatch::from_values(
+            constants_sigmas_vecs,
+            rate_bits,
+            PlonkOracle::CONSTANTS_SIGMAS.blinding,
+            cap_height,
+            &mut timing,
+            Some(&fft_root_table),
+        );
         // Map between gates where not all generators are used and the gate's number of used generators.
         let incomplete_gates = self
             .current_slots
@@ -1202,13 +1197,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         let num_partial_products =
             num_partial_products(self.config.num_routed_wires, quotient_degree_factor);
 
-        let lookup_degree = self.config.max_quotient_degree_factor - 1;
-        let num_lookup_polys = if num_luts == 0 {
-            0
-        } else {
-            // There is 1 RE polynomial and multiple Sum/LDC polynomials.
-            ceil_div_usize(LookupGate::num_slots(&self.config), lookup_degree) + 1
-        };
         let constants_sigmas_cap = constants_sigmas_commitment.merkle_tree.cap.clone();
         let domain_separator = self.domain_separator.unwrap_or_default();
         let domain_separator_digest = C::Hasher::hash_pad(&domain_separator);
@@ -1234,9 +1222,6 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             num_public_inputs,
             k_is,
             num_partial_products,
-            num_lookup_polys,
-            num_lookup_selectors,
-            luts: self.luts,
         };
 
         let mut success = true;
@@ -1248,7 +1233,7 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             }
         }
 
-        let prover_only = ProverOnlyCircuitData::<F, C, D> {
+        let prover_only = ProverOnlyCircuitData {
             generators: self.generators,
             generator_indices_by_watches,
             constants_sigmas_commitment,
@@ -1258,11 +1243,9 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
             representative_map: forest.parents,
             fft_root_table: Some(fft_root_table),
             circuit_digest,
-            lookup_rows: self.lookup_rows.clone(),
-            lut_to_lookups: self.lut_to_lookups.clone(),
         };
 
-        let verifier_only = VerifierOnlyCircuitData::<C, D> {
+        let verifier_only = VerifierOnlyCircuitData {
             constants_sigmas_cap,
             circuit_digest,
         };

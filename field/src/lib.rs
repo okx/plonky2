@@ -1,12 +1,12 @@
 #![allow(incomplete_features)]
-#![allow(clippy::too_many_arguments)]
-#![allow(clippy::type_complexity)]
 #![allow(clippy::len_without_is_empty)]
 #![allow(clippy::needless_range_loop)]
-#![feature(stdsimd)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(missing_debug_implementations)]
 #![feature(specialization)]
-// #![cfg_attr(not(test), no_std)]
-
+#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
+#![cfg_attr(not(test), no_std)]
+#![cfg(not(test))]
 extern crate alloc;
 
 pub(crate) mod arch;
@@ -33,15 +33,22 @@ mod field_testing;
 #[cfg(test)]
 mod prime_field_testing;
 
+#[cfg(feature = "precompile")]
 include!(concat!(env!("OUT_DIR"), "/goldilock_root_of_unity.rs"));
 
+#[cfg(feature = "precompile")]
 use std::collections::HashMap;
 
+#[cfg(feature = "precompile")]
 use fft::FftRootTable;
+#[cfg(feature = "precompile")]
 use goldilocks_field::GoldilocksField;
+#[cfg(feature = "precompile")]
 use lazy_static::lazy_static;
+#[cfg(feature = "precompile")]
 use plonky2_util::pre_compute::{PRE_COMPUTE_END, PRE_COMPUTE_START};
 
+#[cfg(feature = "precompile")]
 lazy_static! {
     pub static ref PRE_COMPUTE_ROOT_TABLES: HashMap<usize, FftRootTable<GoldilocksField>> = {
         let mut map = HashMap::new();
@@ -74,7 +81,8 @@ lazy_static! {
 
 #[cfg(test)]
 mod test {
-    use super::*;
+
+    #[cfg(feature = "precompile")]
     #[test]
     fn test_pre_compute() {
         for lgn_size in (PRE_COMPUTE_START..=PRE_COMPUTE_END) {

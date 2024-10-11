@@ -1,6 +1,9 @@
-use alloc::format;
-use alloc::string::{String, ToString};
-use alloc::vec::Vec;
+#[cfg(not(feature = "std"))]
+use alloc::{
+    format,
+    string::{String, ToString},
+    vec::Vec,
+};
 
 use crate::field::extension::Extendable;
 use crate::field::packed::PackedField;
@@ -41,16 +44,16 @@ impl ArithmeticGate {
         config.num_routed_wires / wires_per_op
     }
 
-    pub const fn wire_ith_multiplicand_0(i: usize) -> usize {
+    pub(crate) const fn wire_ith_multiplicand_0(i: usize) -> usize {
         4 * i
     }
-    pub const fn wire_ith_multiplicand_1(i: usize) -> usize {
+    pub(crate) const fn wire_ith_multiplicand_1(i: usize) -> usize {
         4 * i + 1
     }
-    pub const fn wire_ith_addend(i: usize) -> usize {
+    pub(crate) const fn wire_ith_addend(i: usize) -> usize {
         4 * i + 2
     }
-    pub const fn wire_ith_output(i: usize) -> usize {
+    pub(crate) const fn wire_ith_output(i: usize) -> usize {
         4 * i + 3
     }
 }
@@ -67,6 +70,51 @@ impl<F: RichField + Extendable<D>, const D: usize> Gate<F, D> for ArithmeticGate
     fn deserialize(src: &mut Buffer, _common_data: &CommonCircuitData<F, D>) -> IoResult<Self> {
         let num_ops = src.read_usize()?;
         Ok(Self { num_ops })
+    }
+
+    fn export_circom_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "template Arithmetic$NUM_OPS() {{
+  signal input constants[NUM_OPENINGS_CONSTANTS()][2];
+  signal input wires[NUM_OPENINGS_WIRES()][2];
+  signal input public_input_hash[4];
+  signal input constraints[NUM_GATE_CONSTRAINTS()][2];
+  signal output out[NUM_GATE_CONSTRAINTS()][2];
+
+  signal filter[2];
+  $SET_FILTER;
+
+  for (var i = 0; i < $NUM_OPS; i++) {{
+    out[i] <== ConstraintPush()(constraints[i], filter, GlExtSub()(wires[4 * i + 3], GlExtAdd()(GlExtMul()(GlExtMul()(wires[4 * i], wires[4 * i + 1]), constants[$NUM_SELECTORS + 0]), GlExtMul()(wires[4 * i + 2], constants[$NUM_SELECTORS + 1]))));
+  }}
+
+  for (var i = $NUM_OPS; i < NUM_GATE_CONSTRAINTS(); i++) {{
+    out[i] <== constraints[i];
+  }}
+}}"
+        ).to_string();
+        template_str = template_str.replace("$NUM_OPS", &*self.num_ops.to_string());
+        template_str
+    }
+    fn export_solidity_verification_code(&self) -> String {
+        let mut template_str = format!(
+            "library Arithmetic$NUM_OPSLib {{
+    using GoldilocksExtLib for uint64[2];
+    function set_filter(GatesUtilsLib.EvaluationVars memory ev) internal pure {{
+        $SET_FILTER;
+    }}
+    function eval(GatesUtilsLib.EvaluationVars memory ev, uint64[2][$NUM_GATE_CONSTRAINTS] memory constraints) internal pure {{
+        for (uint32 i = 0; i < $NUM_OPS; i++) {{
+            uint64[2] memory constraint;
+            constraint = ev.wires[4 * i].mul(ev.wires[4 * i + 1]).mul(ev.constants[$NUM_SELECTORS + 0]).add(ev.wires[4 * i + 2].mul(ev.constants[$NUM_SELECTORS + 1]));
+            GatesUtilsLib.push(constraints, ev.filter, i, ev.wires[4 * i + 3].sub(constraint));
+        }}
+    }}
+}}"
+        )
+            .to_string();
+        template_str = template_str.replace("$NUM_OPS", &*self.num_ops.to_string());
+        template_str
     }
 
     fn eval_unfiltered(&self, vars: EvaluationVars<F, D>) -> Vec<F::Extension> {

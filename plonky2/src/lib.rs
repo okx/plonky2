@@ -1,13 +1,11 @@
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::needless_range_loop)]
+#![deny(rustdoc::broken_intra_doc_links)]
+#![deny(missing_debug_implementations)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![cfg_attr(target_arch = "x86_64", feature(stdarch_x86_avx512))]
 
-#![allow(non_upper_case_globals)]
-#![allow(non_camel_case_types)]
-#![allow(non_snake_case)]
-
-include!("bindings.rs");
-
+// #[cfg(not(feature = "std"))]
 pub extern crate alloc;
 
 /// Re-export of `plonky2_field`.
