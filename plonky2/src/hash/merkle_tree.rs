@@ -32,9 +32,6 @@ use crate::plonk::config::HasherType;
 use crate::plonk::config::{GenericHashOut, Hasher};
 use crate::util::log2_strict;
 
-use std::os::raw::c_void;
-use std::time::Instant;
-
 #[cfg(feature = "cuda")]
 pub static GPU_ID: Lazy<Arc<Mutex<u64>>> = Lazy::new(|| Arc::new(Mutex::new(0)));
 
@@ -845,9 +842,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
 #[cfg(test)]
 mod tests {
     use anyhow::Result;
+    use boojum::field::goldilocks::GoldilocksField;
+    use boojum_cuda::poseidon::{build_merkle_tree, Poseidon};
+    use era_cudart::memory::{memory_copy, DeviceAllocation};
+    use era_cudart::result::CudaResult;
+    use era_cudart::slice::DeviceSlice;
+    use era_cudart::stream::CudaStream;
 
     use super::*;
     use crate::field::extension::Extendable;
+    use crate::field::types::PrimeField64;
     use crate::hash::merkle_proofs::verify_merkle_proof_to_cap;
     use crate::hash::poseidon_bn128::PoseidonBN128GoldilocksConfig;
     use crate::plonk::config::{
@@ -856,6 +860,10 @@ mod tests {
 
     fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
+    }
+
+    fn random_data_1d<F: RichField>(n: usize, k: usize) -> Vec<F> {
+        F::rand_vec(n * k)
     }
 
     fn verify_all_leaves<
@@ -1240,6 +1248,74 @@ mod tests {
         let leaves = random_data::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[ignore]
+    #[test]
+    fn test_compare_boojum_cuda() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        const LOG_N: usize = 2;
+        const N: usize = 1 << LOG_N;
+        const CHUNKS_PER_LEAF: usize = 2;
+        const LAYER_CAP: u32 = 1;
+        const RATE: usize = 8;
+        const CAPACITY: usize = 4;
+
+        // our version
+        let leaves: Vec<F> = random_data_1d::<F>(N, CHUNKS_PER_LEAF * RATE);
+        let tree =
+            MerkleTree::<F, <PoseidonGoldilocksConfig as GenericConfig<D>>::Hasher>::new_from_1d(
+                leaves.clone(),
+                CHUNKS_PER_LEAF * RATE,
+                0,
+            );
+        tree.digests.iter().for_each(|x| {
+            println!("{:x?}", x);
+        });
+        tree.cap.0.iter().for_each(|x| {
+            println!("{:x?}", x);
+        });
+
+        // zksync version
+        let mut values_device =
+            DeviceAllocation::<GoldilocksField>::alloc((CHUNKS_PER_LEAF * RATE) << LOG_N).unwrap();
+        let mut results_device =
+            DeviceAllocation::<GoldilocksField>::alloc(CAPACITY << (LOG_N + 1)).unwrap();
+        let stream: era_cudart::stream::CudaStream = era_cudart::stream::CudaStream::default();
+        let values_host: Vec<GoldilocksField> = leaves.into_iter().map(
+            |x| {                
+                GoldilocksField::from_nonreduced_u64(F::to_canonical_u64(&x))
+            }
+        ).collect();
+        memory_copy(&mut values_device, &values_host).unwrap();
+
+        let layers_count = LOG_N as u32 + 1 - LAYER_CAP;
+        build_merkle_tree::<Poseidon>(&values_device, &mut results_device, 0, &stream, layers_count).unwrap();
+
+        let mut results_host: Vec<GoldilocksField> = Vec::with_capacity(CAPACITY << (LOG_N + 1));
+        unsafe {            
+            results_host.set_len(CAPACITY << (LOG_N + 1));
+        }
+        memory_copy(&mut results_host, &results_device).unwrap();
+        
+        results_host.iter().for_each(|x| {
+            println!("{:?}", x);
+        });
+
+        let results_plonky2: Vec<u64> = tree.digests.iter().map(
+            |h| {
+                h.elements.into_iter().map(|x| F::to_canonical_u64(&x)).collect::<Vec<u64>>()
+            }
+        ).flatten().collect();
+
+        results_host.iter().zip(results_plonky2).for_each(|(x, y)| {
+                assert_eq!(x.0, y);
+        });        
 
         Ok(())
     }

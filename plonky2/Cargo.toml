@@ -64,6 +64,14 @@ serde_json = { version = "1.0" }
 structopt = { version = "0.3.26", default-features = false }
 tynm = { version = "0.1.6", default-features = false }
 zkhash = { git = "https://github.com/HorizenLabs/poseidon2" }
+boojum = { version = "0.30.1" }
+boojum-cuda = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", rev = "39860f574def8fdb547099afb341019afe8bdf47" }
+era_cudart = { git = "https://github.com/matter-labs/zksync-crypto-gpu.git", rev = "39860f574def8fdb547099afb341019afe8bdf47" }
+# boojum = { path = "../../zksync-crypto/crates/boojum" }
+# boojum-cuda = { path = "../../zksync-crypto-gpu/crates/boojum-cuda" }
+# era_cudart = { path = "../../zksync-crypto-gpu/crates/cudart" }
+
+[profile.release]
 
 [target.'cfg(not(target_os = "macos"))'.dev-dependencies]
 jemallocator = "0.5.0"
