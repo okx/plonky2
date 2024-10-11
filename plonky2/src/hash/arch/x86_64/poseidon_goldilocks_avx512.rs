@@ -364,3 +364,75 @@ where
     };
     *state
 }
+
+pub fn poseidon_double_avx512<F>(input: &[F; 2 * SPONGE_WIDTH]) -> [F; 2 * SPONGE_WIDTH]
+where
+    F: PrimeField64 + Poseidon,
+{
+    let mut state = &mut input.clone();
+    let mut round_ctr = 0;
+
+    unsafe {
+        // Self::full_rounds(&mut state, &mut round_ctr);
+        for _ in 0..HALF_N_FULL_ROUNDS {
+            // load state
+            let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
+            let s1 = _mm512_loadu_si512((&state[8..16]).as_ptr().cast::<i32>());
+            let s2 = _mm512_loadu_si512((&state[16..24]).as_ptr().cast::<i32>());
+
+            let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
+                .try_into()
+                .unwrap();
+            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
+            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
+            let ss0 = add_avx512_b_c(&s0, &rc0);
+            let ss1 = add_avx512_b_c(&s1, &rc1);
+            let r0 = sbox_avx512_one(&ss0);
+            let r1 = sbox_avx512_one(&ss1);
+
+            // store state
+            _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
+            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
+
+            *state = <F as Poseidon>::mds_layer(&state);
+            round_ctr += 1;
+        }
+        partial_first_constant_layer_avx(&mut state);
+        mds_partial_layer_init_avx(&mut state);
+
+        for i in 0..N_PARTIAL_ROUNDS {
+            state[0] = sbox_monomial(state[0]);
+            state[0] = state[0].add_canonical_u64(FAST_PARTIAL_ROUND_CONSTANTS[i]);
+            *state = <F as Poseidon>::mds_partial_layer_fast(&state, i);
+        }
+        round_ctr += N_PARTIAL_ROUNDS;
+
+        // Self::full_rounds(&mut state, &mut round_ctr);
+        for _ in 0..HALF_N_FULL_ROUNDS {
+            // load state
+            let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
+            let s1 = _mm512_loadu_si512((&state[4..12]).as_ptr().cast::<i32>());
+
+            let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
+                .try_into()
+                .unwrap();
+            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
+            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
+            let ss0 = add_avx512_b_c(&s0, &rc0);
+            let ss1 = add_avx512_b_c(&s1, &rc1);
+            let r0 = sbox_avx512_one(&ss0);
+            let r1 = sbox_avx512_one(&ss1);
+
+            // store state
+            _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
+            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
+
+            *state = <F as Poseidon>::mds_layer(&state);
+            // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
+            round_ctr += 1;
+        }
+
+        debug_assert_eq!(round_ctr, N_ROUNDS);
+    };
+    *state
+}
