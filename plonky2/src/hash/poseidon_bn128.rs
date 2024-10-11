@@ -262,7 +262,8 @@ mod tests {
     use plonky2_field::types::Field;
 
     use super::PoseidonBN128Hash;
-    use crate::{hash::poseidon::PoseidonHash, plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig}};
+    use crate::hash::poseidon::PoseidonHash;
+    use crate::plonk::config::{GenericConfig, GenericHashOut, Hasher, PoseidonGoldilocksConfig};
 
     #[test]
     fn test_poseidon_bn128_hash_no_pad() -> Result<()> {
