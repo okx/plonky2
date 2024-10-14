@@ -27,6 +27,21 @@ use crate::util::reducing::ReducingFactor;
 use crate::util::timing::TimingTree;
 use crate::util::{log2_strict, reverse_bits, reverse_index_bits_in_place, transpose};
 
+#[cfg(all(feature = "cuda", any(test, doctest)))]
+pub static GPU_INIT: once_cell::sync::Lazy<std::sync::Arc<std::sync::Mutex<u64>>> = once_cell::sync::Lazy::new(|| std::sync::Arc::new(std::sync::Mutex::new(0)));
+
+#[cfg(all(feature = "cuda", any(test, doctest)))]
+fn init_gpu() {
+    use cryptography_cuda::init_cuda_rs;
+
+    let mut init = GPU_INIT.lock().unwrap();
+    if *init == 0 {
+        println!("Init GPU!");
+        init_cuda_rs();
+        *init = 1;
+    }
+}
+
 /// Four (~64 bit) field elements gives ~128 bit security.
 pub const SALT_SIZE: usize = 4;
 
@@ -196,6 +211,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         let degree = polynomials[0].len();
         let log_n = log2_strict(degree);
 
+        #[cfg(any(test, doctest))]
+        init_gpu();
+
         if log_n + rate_bits > 1
             && polynomials.len() > 0
             && pols * (1 << (log_n + rate_bits)) < (1 << 31)
@@ -236,7 +254,7 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
     }
 
     #[cfg(feature = "cuda")]
-    pub fn from_coeffs_gpu(
+    fn from_coeffs_gpu(
         polynomials: &[PolynomialCoeffs<F>],
         rate_bits: usize,
         blinding: bool,
@@ -350,6 +368,9 @@ impl<F: RichField + Extendable<D>, C: GenericConfig<D, F = F>, const D: usize>
         blinding: bool,
         fft_root_table: Option<&FftRootTable<F>>,
     ) -> Vec<Vec<F>> {
+        #[cfg(all(feature = "cuda", any(test, doctest)))]
+        init_gpu();
+
         let degree = polynomials[0].len();
         #[cfg(all(feature = "cuda", feature = "batch"))]
         let log_n = log2_strict(degree) + rate_bits;

@@ -379,20 +379,24 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     let stream1 = CudaStream::create().unwrap();
     let stream2 = CudaStream::create().unwrap();
 
-    gpu_digests_buf
-        .copy_to_host_ptr_async(
-            digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            digests_size,
-            &stream1,
-        )
-        .expect("copy digests");
-    gpu_cap_buf
-        .copy_to_host_ptr_async(
-            cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            caps_size,
-            &stream2,
-        )
-        .expect("copy caps");
+    if digests_buf.len() != 0 {
+        gpu_digests_buf
+            .copy_to_host_ptr_async(
+                digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                digests_size,
+                &stream1,
+            )
+            .expect("copy digests");
+    }
+    if cap_buf.len() != 0 {
+        gpu_cap_buf
+            .copy_to_host_ptr_async(
+                cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                caps_size,
+                &stream2,
+            )
+            .expect("copy caps");
+    }
     stream1.synchronize().expect("cuda sync");
     stream2.synchronize().expect("cuda sync");
     stream1.destroy().expect("cuda stream destroy");
@@ -545,6 +549,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         leaf_len: usize,
         cap_height: usize,
     ) -> Self {
+        // special case
+        if leaf_len <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
+            let mut host_leaves: Vec<F> = vec![F::ZERO; leaves_len * leaf_len];
+            leaves_gpu_ptr
+                .copy_to_host(host_leaves.as_mut_slice(), leaves_len * leaf_len)
+                .expect("copy to host error");
+            return Self::new_from_1d(host_leaves, leaf_len, cap_height);
+        }
+
+        // general case
         let log2_leaves_len = log2_strict(leaves_len);
         assert!(
             cap_height <= log2_leaves_len,

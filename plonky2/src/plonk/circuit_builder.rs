@@ -90,7 +90,7 @@ pub struct LookupWire {
 ///
 /// # Usage
 ///
-/// ```rust
+/// ```ignore
 /// use plonky2::plonk::circuit_data::CircuitConfig;
 /// use plonky2::iop::witness::PartialWitness;
 /// use plonky2::plonk::circuit_builder::CircuitBuilder;
@@ -1287,5 +1287,56 @@ impl<F: RichField + Extendable<D>, const D: usize> CircuitBuilder<F, D> {
         // TODO: Can skip parts of this.
         let circuit_data = self.build::<C>();
         circuit_data.verifier_data()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::field::types::Field;
+    use crate::iop::witness::PartialWitness;
+    use crate::plonk::circuit_builder::CircuitBuilder;
+    use crate::plonk::circuit_data::CircuitConfig;
+    use crate::plonk::config::{GenericConfig, PoseidonGoldilocksConfig};
+
+    // this is the code at line 93
+    #[test]
+    fn test_builder() {
+        // Define parameters for this circuit
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+
+        let config = CircuitConfig::standard_recursion_config();
+        let mut builder = CircuitBuilder::<F, D>::new(config);
+
+        // Build a circuit for the statement: "I know the 100th term
+        // of the Fibonacci sequence, starting from 0 and 1".
+        let initial_a = builder.constant(F::ZERO);
+        let initial_b = builder.constant(F::ONE);
+        let mut prev_target = initial_a;
+        let mut cur_target = initial_b;
+        for _ in 0..99 {
+            // Encode an addition of the two previous terms
+            let temp = builder.add(prev_target, cur_target);
+            // Shift the two previous terms with the new value
+            prev_target = cur_target;
+            cur_target = temp;
+        }
+
+        // The only public input is the result (which is generated).
+        builder.register_public_input(cur_target);
+
+        // Build the circuit
+        let circuit_data = builder.build::<C>();
+
+        // Now compute the witness and generate a proof
+        let pw = PartialWitness::new();
+
+        // There are no public inputs to register, as the only one
+        // will be generated while proving the statement.
+        let proof = circuit_data.prove(pw).unwrap();
+
+        // Verify the proof
+        assert!(circuit_data.verify(proof).is_ok());
     }
 }
