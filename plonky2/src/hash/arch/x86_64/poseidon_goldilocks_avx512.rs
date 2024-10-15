@@ -1343,7 +1343,16 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif1perm2 = _mm512_permutex_epi64(dif1, 0x2);
     let z0i = _mm512_add_epi64(dif3, dif1perm1);
     let z0i = _mm512_add_epi64(z0i, dif1perm2);
-    let mask = _mm512_set_epi64(0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64);
+    let mask = _mm512_set_epi64(
+        0,
+        0,
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+        0,
+        0,
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+    );
     let z0r = _mm512_and_si512(z0r, mask);
     let z0i = _mm512_and_si512(z0i, mask);
 
@@ -1368,7 +1377,16 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif1perm = _mm512_permutex_epi64(dif1, 0x8);
     let z1i = _mm512_add_epi64(dif3, dif3perm);
     let z1i = _mm512_add_epi64(z1i, dif1perm);
-    let mask = _mm512_set_epi64(0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0);
+    let mask = _mm512_set_epi64(
+        0,
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+        0,
+        0,
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+        0,
+    );
     let z1r = _mm512_and_si512(z1r, mask);
     let z1i = _mm512_and_si512(z1i, mask);
 
@@ -1392,7 +1410,16 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif3perm2 = _mm512_permutex_epi64(dif3, 0x10);
     let z2i = _mm512_add_epi64(dif3, dif3perm1);
     let z2i = _mm512_add_epi64(z2i, dif3perm2);
-    let mask = _mm512_set_epi64(0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0);
+    let mask = _mm512_set_epi64(
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+        0,
+        0,
+        0,
+        0xFFFFFFFFFFFFFFFFu64 as i64,
+        0,
+        0,
+    );
     let z2r = _mm512_and_si512(z2r, mask);
     let z2i = _mm512_and_si512(z2i, mask);
 
@@ -1892,7 +1919,10 @@ where
     }
 
     // return 2 hashes of 4 elements each
-    (vec![state[0], state[1], state[2], state[3]], vec![state[12], state[13], state[14], state[15]])
+    (
+        vec![state[0], state[1], state[2], state[3]],
+        vec![state[12], state[13], state[14], state[15]],
+    )
 }
 
 pub fn hash_two_avx512<F>(h1: &Vec<F>, h2: &Vec<F>, h3: &Vec<F>, h4: &Vec<F>) -> (Vec<F>, Vec<F>)
@@ -1905,5 +1935,8 @@ where
     state[12..16].copy_from_slice(&h3);
     state[16..20].copy_from_slice(&h4);
     state = poseidon_avx512_double(&state);
-    (vec![state[0], state[1], state[2], state[3]], vec![state[12], state[13], state[14], state[15]])
+    (
+        vec![state[0], state[1], state[2], state[3]],
+        vec![state[12], state[13], state[14], state[15]],
+    )
 }
