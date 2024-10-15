@@ -1296,6 +1296,7 @@ unsafe fn block1_avx512(x: &__m512i, y: [i64; 3]) -> __m512i {
     _mm512_add_epi64(t0, t2)
 }
 
+#[allow(unused)]
 #[inline(always)]
 unsafe fn block2_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> (__m512i, __m512i) {
     let mut vxr: [i64; 8] = [0; 8];
