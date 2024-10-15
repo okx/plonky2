@@ -275,9 +275,9 @@ fn fill_subtree_poseidon_avx512<F: RichField, H: Hasher<F>>(
     }
     // if two leaves => return their concat hash
     if leaves_count == 2 {
-        let h = hash_leaf_avx512(leaves, leaf_size);
-        let hash_left = H::Hash::from_bytes(&h[0].to_bytes());
-        let hash_right = H::Hash::from_bytes(&h[1].to_bytes());
+        let (h1, h2) = hash_leaf_avx512(leaves, leaf_size);
+        let hash_left = H::Hash::from_vec(&h1);
+        let hash_right = H::Hash::from_vec(&h2);
         digests_buf[0].write(hash_left);
         digests_buf[1].write(hash_right);
         return H::two_to_one(hash_left, hash_right);
@@ -294,9 +294,9 @@ fn fill_subtree_poseidon_avx512<F: RichField, H: Hasher<F>>(
         .for_each(|(chunk_idx, digests)| {
             let (_, r) = leaves.split_at(2 * chunk_idx * leaf_size);
             let (leaves2, _) = r.split_at(2 * leaf_size);
-            let h = hash_leaf_avx512(leaves2, leaf_size);
-            let h1 = H::Hash::from_bytes(&h[0].to_bytes());
-            let h2 = H::Hash::from_bytes(&h[1].to_bytes());
+            let (h1, h2) = hash_leaf_avx512(leaves2, leaf_size);
+            let h1 = H::Hash::from_vec(&h1);
+            let h2 = H::Hash::from_vec(&h2);
             digests[0].write(h1);
             digests[1].write(h2);
         });
@@ -326,14 +326,14 @@ fn fill_subtree_poseidon_avx512<F: RichField, H: Hasher<F>>(
                     let left_digest2 = next_digests[left_idx2].assume_init().to_vec();
                     let right_digest2 = next_digests[right_idx2].assume_init().to_vec();
 
-                    let h = hash_two_avx512(
+                    let (h1, h2) = hash_two_avx512(
                         &left_digest1,
                         &right_digest1,
                         &left_digest2,
                         &right_digest2,
                     );
-                    let h1 = H::Hash::from_bytes(&h[0].to_bytes());
-                    let h2 = H::Hash::from_bytes(&h[1].to_bytes());
+                    let h1 = H::Hash::from_vec(&h1);
+                    let h2 = H::Hash::from_vec(&h2);
                     digests[0].write(h1);
                     digests[1].write(h2);
                 }
@@ -369,9 +369,9 @@ fn fill_digests_buf_poseidon_avx515<F: RichField, H: Hasher<F>>(
             .for_each(|(leaf_idx, cap_buf)| {
                 let (_, r) = leaves.split_at(2 * leaf_idx * leaf_size);
                 let (lv, _) = r.split_at(2 * leaf_size);
-                let h = hash_leaf_avx512(lv, leaf_size);
-                cap_buf[0].write(H::Hash::from_bytes(&h[0].to_bytes()));
-                cap_buf[1].write(H::Hash::from_bytes(&h[1].to_bytes()));
+                let (h1, h2) = hash_leaf_avx512(lv, leaf_size);
+                cap_buf[0].write(H::Hash::from_vec(&h1));
+                cap_buf[1].write(H::Hash::from_vec(&h2));
             });
         return;
     }

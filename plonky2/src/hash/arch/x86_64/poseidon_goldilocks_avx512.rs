@@ -8,13 +8,12 @@ use super::poseidon_goldilocks_avx2::{
 use crate::field::types::PrimeField64;
 use crate::hash::arch::x86_64::goldilocks_avx512::*;
 use crate::hash::arch::x86_64::poseidon_goldilocks_avx2::FAST_PARTIAL_ROUND_W_HATS;
-use crate::hash::hash_types::{HashOut, RichField};
+use crate::hash::hash_types::RichField;
 use crate::hash::poseidon::{
     add_u160_u128, reduce_u160, Poseidon, ALL_ROUND_CONSTANTS, HALF_N_FULL_ROUNDS,
     N_PARTIAL_ROUNDS, N_ROUNDS, SPONGE_RATE, SPONGE_WIDTH,
 };
 use crate::hash::poseidon_goldilocks::poseidon12_mds::block2;
-use crate::plonk::config::GenericHashOut;
 
 #[allow(dead_code)]
 const MDS_MATRIX_CIRC: [u64; 12] = [17, 15, 41, 16, 2, 28, 13, 13, 39, 18, 34, 20];
@@ -1223,7 +1222,7 @@ unsafe fn fft4_real_avx512(
     x2: &__m512i,
     x3: &__m512i,
 ) -> (__m512i, __m512i, __m512i, __m512i) {
-    let zeros = _mm512_set_epi64(0, 0, 0, 0, 0, 0, 0, 0);
+    let zeros = _mm512_xor_si512(*x0, *x0); // faster 0
     let (z0, z2) = fft2_real_avx512(x0, x2);
     let (z1, z3) = fft2_real_avx512(x1, x3);
     let y0 = _mm512_add_epi64(z0, z1);
@@ -1243,7 +1242,7 @@ unsafe fn ifft2_real_unreduced_avx512(y0: &__m512i, y1: &__m512i) -> (__m512i, _
 unsafe fn ifft4_real_unreduced_avx512(
     y: (__m512i, (__m512i, __m512i), __m512i),
 ) -> (__m512i, __m512i, __m512i, __m512i) {
-    let zeros = _mm512_set_epi64(0, 0, 0, 0, 0, 0, 0, 0);
+    let zeros = _mm512_xor_si512(y.0, y.0); // faster 0
     let z0 = _mm512_add_epi64(y.0, y.2);
     let z1 = _mm512_sub_epi64(y.0, y.2);
     let z2 = y.1 .0;
@@ -1264,7 +1263,7 @@ pub unsafe fn add64_no_carry_avx512(a: &__m512i, b: &__m512i) -> (__m512i, __m51
      *   - (test 3): if a + b >= 2^64 (this means a + b becomes positive in signed representation, that is, a + b >= 0) => there is overflow so cout = 1
      */
     let ones = _mm512_set_epi64(1, 1, 1, 1, 1, 1, 1, 1);
-    let zeros = _mm512_set_epi64(0, 0, 0, 0, 0, 0, 0, 0);
+    let zeros = _mm512_xor_si512(*a, *a); // faster 0
     let r = _mm512_add_epi64(*a, *b);
     let ma = _mm512_cmpgt_epi64_mask(zeros, *a);
     let mb = _mm512_cmpgt_epi64_mask(zeros, *b);
@@ -1276,16 +1275,7 @@ pub unsafe fn add64_no_carry_avx512(a: &__m512i, b: &__m512i) -> (__m512i, __m51
 
 #[inline]
 pub unsafe fn mul64_no_overflow_avx512(a: &__m512i, b: &__m512i) -> __m512i {
-    let r = _mm512_mul_epu32(*a, *b);
-    let ah = _mm512_srli_epi64(*a, 32);
-    let bh = _mm512_srli_epi64(*b, 32);
-    let r1 = _mm512_mul_epu32(*a, bh);
-    let r1 = _mm512_slli_epi64(r1, 32);
-    let r = _mm512_add_epi64(r, r1);
-    let r1 = _mm512_mul_epu32(ah, *b);
-    let r1 = _mm512_slli_epi64(r1, 32);
-    let r = _mm512_add_epi64(r, r1);
-    r
+    _mm512_mullo_epi64(*a, *b)
 }
 
 #[inline(always)]
@@ -1321,6 +1311,95 @@ unsafe fn block2_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> (__m5
     let rr = _mm512_loadu_si512(vxr.as_ptr().cast::<i32>());
     let ri = _mm512_loadu_si512(vxi.as_ptr().cast::<i32>());
     (rr, ri)
+}
+
+#[allow(dead_code)]
+#[inline(always)]
+unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> (__m512i, __m512i) {
+    let yr = _mm512_set_epi64(0, y[2].0, y[1].0, y[0].0, 0, y[2].0, y[1].0, y[0].0);
+    let yi = _mm512_set_epi64(0, y[2].1, y[1].1, y[0].1, 0, y[2].1, y[1].1, y[0].1);
+    let ys = _mm512_add_epi64(yr, yi);
+    let xs = _mm512_add_epi64(*xr, *xi);
+
+    // z0
+    // z0r = dif2[0] + prod[1] - sum[1] + prod[2] - sum[2]
+    // z0i = prod[0] - sum[0] + dif1[1] + dif1[2]
+    let yy = _mm512_permutex_epi64(yr, 0x18);
+    let mr_z0 = mul64_no_overflow_avx512(xr, &yy);
+    let yy = _mm512_permutex_epi64(yi, 0x18);
+    let mi_z0 = mul64_no_overflow_avx512(xi, &yy);
+    let sum = _mm512_add_epi64(mr_z0, mi_z0);
+    let dif1 = _mm512_sub_epi64(mi_z0, mr_z0);
+    let dif2 = _mm512_sub_epi64(mr_z0, mi_z0);
+    let yy = _mm512_permutex_epi64(ys, 0x18);
+    let prod = mul64_no_overflow_avx512(&xs, &yy);
+    let dif3 = _mm512_sub_epi64(prod, sum);
+    let dif3perm1 = _mm512_permutex_epi64(dif3, 0x1);
+    let dif3perm2 = _mm512_permutex_epi64(dif3, 0x2);
+    let z0r = _mm512_add_epi64(dif2, dif3perm1);
+    let z0r = _mm512_add_epi64(z0r, dif3perm2);
+    let dif1perm1 = _mm512_permutex_epi64(dif1, 0x1);
+    let dif1perm2 = _mm512_permutex_epi64(dif1, 0x2);
+    let z0i = _mm512_add_epi64(dif3, dif1perm1);
+    let z0i = _mm512_add_epi64(z0i, dif1perm2);
+    let mask = _mm512_set_epi64(0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64);
+    let z0r = _mm512_and_si512(z0r, mask);
+    let z0i = _mm512_and_si512(z0i, mask);
+
+    // z1
+    // z1r = dif2[0] + dif2[1] + prod[2] - sum[2];
+    // z1i = prod[0] - sum[0] + prod[1] - sum[1] + dif1[2];
+    let yy = _mm512_permutex_epi64(yr, 0x21);
+    let mr_z1 = mul64_no_overflow_avx512(xr, &yy);
+    let yy = _mm512_permutex_epi64(yi, 0x21);
+    let mi_z1 = mul64_no_overflow_avx512(xi, &yy);
+    let sum = _mm512_add_epi64(mr_z1, mi_z1);
+    let dif1 = _mm512_sub_epi64(mi_z1, mr_z1);
+    let dif2 = _mm512_sub_epi64(mr_z1, mi_z1);
+    let yy = _mm512_permutex_epi64(ys, 0x21);
+    let prod = mul64_no_overflow_avx512(&xs, &yy);
+    let dif3 = _mm512_sub_epi64(prod, sum);
+    let dif2perm = _mm512_permutex_epi64(dif2, 0x0);
+    let dif3perm = _mm512_permutex_epi64(dif3, 0x8);
+    let z1r = _mm512_add_epi64(dif2, dif2perm);
+    let z1r = _mm512_add_epi64(z1r, dif3perm);
+    let dif3perm = _mm512_permutex_epi64(dif3, 0x0);
+    let dif1perm = _mm512_permutex_epi64(dif1, 0x8);
+    let z1i = _mm512_add_epi64(dif3, dif3perm);
+    let z1i = _mm512_add_epi64(z1i, dif1perm);
+    let mask = _mm512_set_epi64(0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0);
+    let z1r = _mm512_and_si512(z1r, mask);
+    let z1i = _mm512_and_si512(z1i, mask);
+
+    // z2
+    // z2r = dif2[0] + dif2[1] + dif2[2];
+    // z2i = prod[0] - sum[0] + prod[1] - sum[1] + prod[2] - sum[2]
+    let yy = _mm512_permutex_epi64(yr, 0x6);
+    let mr_z2 = mul64_no_overflow_avx512(xr, &yy);
+    let yy = _mm512_permutex_epi64(yi, 0x6);
+    let mi_z2 = mul64_no_overflow_avx512(xi, &yy);
+    let sum = _mm512_add_epi64(mr_z2, mi_z2);
+    let dif2 = _mm512_sub_epi64(mr_z2, mi_z2);
+    let yy = _mm512_permutex_epi64(ys, 0x6);
+    let prod = mul64_no_overflow_avx512(&xs, &yy);
+    let dif3 = _mm512_sub_epi64(prod, sum);
+    let dif2perm1 = _mm512_permutex_epi64(dif2, 0x0);
+    let dif2perm2 = _mm512_permutex_epi64(dif2, 0x10);
+    let z2r = _mm512_add_epi64(dif2, dif2perm1);
+    let z2r = _mm512_add_epi64(z2r, dif2perm2);
+    let dif3perm1 = _mm512_permutex_epi64(dif3, 0x0);
+    let dif3perm2 = _mm512_permutex_epi64(dif3, 0x10);
+    let z2i = _mm512_add_epi64(dif3, dif3perm1);
+    let z2i = _mm512_add_epi64(z2i, dif3perm2);
+    let mask = _mm512_set_epi64(0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0, 0, 0xFFFFFFFFFFFFFFFFu64 as i64, 0, 0);
+    let z2r = _mm512_and_si512(z2r, mask);
+    let z2i = _mm512_and_si512(z2i, mask);
+
+    let zr = _mm512_or_si512(z0r, z1r);
+    let zr = _mm512_or_si512(zr, z2r);
+    let zi = _mm512_or_si512(z0i, z1i);
+    let zi = _mm512_or_si512(zi, z2i);
+    (zr, zi)
 }
 
 #[inline(always)]
@@ -1372,7 +1451,8 @@ unsafe fn mds_multiply_freq_avx512(s0: &mut __m512i, s1: &mut __m512i, s2: &mut 
     let f0 = block1_avx512(&u0, MDS_FREQ_BLOCK_ONE);
 
     // let [v1, v5, v9] = block2([(u[0], v[0]), (u[1], v[1]), (u[2], v[2])], MDS_FREQ_BLOCK_TWO);
-    let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    // let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    let (f1, f2) = block2_full_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
 
     // let [v2, v6, v10] = block3_avx([u[0], u[1], u[2]], MDS_FREQ_BLOCK_ONE);
     // [u[0], u[1], u[2]] are all in u3
@@ -1767,28 +1847,23 @@ where
     new_state
 }
 
-pub fn hash_leaf_avx512<F>(inputs: &[F], leaf_size: usize) -> Vec<HashOut<F>>
+pub fn hash_leaf_avx512<F>(inputs: &[F], leaf_size: usize) -> (Vec<F>, Vec<F>)
 where
     F: RichField,
 {
+    // special case
     if leaf_size <= 4 {
-        let mut inputs_bytes1 = vec![0u8; 32];
-        let mut inputs_bytes2 = vec![0u8; 32];
-        for i in 0..inputs.len() {
-            inputs_bytes1[i * 8..(i + 1) * 8]
-                .copy_from_slice(&inputs[i].to_canonical_u64().to_le_bytes());
-            inputs_bytes2[i * 8..(i + 1) * 8]
-                .copy_from_slice(&inputs[i + leaf_size].to_canonical_u64().to_le_bytes());
-        }
-        return vec![
-            HashOut::from_bytes(&inputs_bytes1),
-            HashOut::from_bytes(&inputs_bytes2),
-        ];
+        let mut h1 = vec![F::ZERO; 4];
+        let mut h2 = vec![F::ZERO; 4];
+        h1.copy_from_slice(&inputs[0..leaf_size]);
+        h2.copy_from_slice(&inputs[leaf_size..2 * leaf_size]);
+        return (h1, h2);
     }
 
+    // general case
     let mut state: [F; 24] = [F::ZERO; 24];
 
-    // Absorb all input chunks.
+    // absorb all input chunks of size SPONGE_RATE
     let mut idx1 = 0;
     let mut idx2 = leaf_size;
     let loops = if leaf_size % SPONGE_RATE == 0 {
@@ -1815,13 +1890,11 @@ where
         idx2 += SPONGE_RATE;
     }
 
-    // Squeeze until we have the desired number of outputs.
-    let output1 = vec![state[0], state[1], state[2], state[3]];
-    let output2 = vec![state[12], state[13], state[14], state[15]];
-    vec![HashOut::from_vec(output1), HashOut::from_vec(output2)]
+    // return 2 hashes of 4 elements each
+    (vec![state[0], state[1], state[2], state[3]], vec![state[12], state[13], state[14], state[15]])
 }
 
-pub fn hash_two_avx512<F>(h1: &Vec<F>, h2: &Vec<F>, h3: &Vec<F>, h4: &Vec<F>) -> Vec<HashOut<F>>
+pub fn hash_two_avx512<F>(h1: &Vec<F>, h2: &Vec<F>, h3: &Vec<F>, h4: &Vec<F>) -> (Vec<F>, Vec<F>)
 where
     F: RichField,
 {
@@ -1831,7 +1904,5 @@ where
     state[12..16].copy_from_slice(&h3);
     state[16..20].copy_from_slice(&h4);
     state = poseidon_avx512_double(&state);
-    let output1 = vec![state[0], state[1], state[2], state[3]];
-    let output2 = vec![state[12], state[13], state[14], state[15]];
-    vec![HashOut::from_vec(output1), HashOut::from_vec(output2)]
+    (vec![state[0], state[1], state[2], state[3]], vec![state[12], state[13], state[14], state[15]])
 }
