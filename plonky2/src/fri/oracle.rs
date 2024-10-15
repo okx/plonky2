@@ -28,7 +28,8 @@ use crate::util::timing::TimingTree;
 use crate::util::{log2_strict, reverse_bits, reverse_index_bits_in_place, transpose};
 
 #[cfg(all(feature = "cuda", any(test, doctest)))]
-pub static GPU_INIT: once_cell::sync::Lazy<std::sync::Arc<std::sync::Mutex<u64>>> = once_cell::sync::Lazy::new(|| std::sync::Arc::new(std::sync::Mutex::new(0)));
+pub static GPU_INIT: once_cell::sync::Lazy<std::sync::Arc<std::sync::Mutex<u64>>> =
+    once_cell::sync::Lazy::new(|| std::sync::Arc::new(std::sync::Mutex::new(0)));
 
 #[cfg(all(feature = "cuda", any(test, doctest)))]
 fn init_gpu() {
