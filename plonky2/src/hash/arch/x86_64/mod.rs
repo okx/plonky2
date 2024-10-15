@@ -10,7 +10,7 @@ pub mod goldilocks_avx512;
 pub mod poseidon2_goldilocks_avx2;
 #[cfg(target_feature = "avx2")]
 pub mod poseidon_bn128_avx2;
-#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+#[cfg(target_feature = "avx2")]
 pub mod poseidon_goldilocks_avx2;
 #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
 pub mod poseidon_goldilocks_avx512;

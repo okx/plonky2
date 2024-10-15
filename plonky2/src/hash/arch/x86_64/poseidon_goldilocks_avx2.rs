@@ -218,7 +218,7 @@ const FAST_PARTIAL_ROUND_INITIAL_MATRIX: [[u64; 12]; 12] = [
     ],
 ];
 
-const FAST_PARTIAL_ROUND_W_HATS: [[u64; 12 - 1]; N_PARTIAL_ROUNDS] = [
+pub const FAST_PARTIAL_ROUND_W_HATS: [[u64; 12 - 1]; N_PARTIAL_ROUNDS] = [
     [
         0x3d999c961b7c63b0,
         0x814e82efcd172529,
@@ -818,9 +818,9 @@ const FAST_PARTIAL_ROUND_VS: [[u64; 12]; N_PARTIAL_ROUNDS] = [
     ],
 ];
 
-const MDS_FREQ_BLOCK_ONE: [i64; 3] = [16, 32, 16];
-const MDS_FREQ_BLOCK_TWO: [(i64, i64); 3] = [(2, -1), (-4, 1), (16, 1)];
-const MDS_FREQ_BLOCK_THREE: [i64; 3] = [-1, -8, 2];
+pub(crate) const MDS_FREQ_BLOCK_ONE: [i64; 3] = [16, 32, 16];
+pub(crate) const MDS_FREQ_BLOCK_TWO: [(i64, i64); 3] = [(2, -1), (-4, 1), (16, 1)];
+pub(crate) const MDS_FREQ_BLOCK_THREE: [i64; 3] = [-1, -8, 2];
 
 #[allow(dead_code)]
 #[inline(always)]

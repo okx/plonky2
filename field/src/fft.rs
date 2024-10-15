@@ -1,8 +1,6 @@
 use alloc::vec::Vec;
 use core::cmp::{max, min};
 
-#[cfg(feature = "cuda")]
-use cryptography_cuda::{ntt, types::NTTInputOutputOrder};
 use plonky2_util::{log2_strict, reverse_index_bits_in_place};
 use unroll::unroll_for_loops;
 
@@ -32,20 +30,6 @@ pub fn fft_root_table<F: Field>(n: usize) -> FftRootTable<F> {
         root_table.push(root_row);
     }
     root_table
-}
-
-#[allow(dead_code)]
-#[cfg(feature = "cuda")]
-fn fft_dispatch_gpu<F: Field>(
-    input: &mut [F],
-    zero_factor: Option<usize>,
-    root_table: Option<&FftRootTable<F>>,
-) {
-    if F::CUDA_SUPPORT {
-        return ntt(0, input, NTTInputOutputOrder::NN);
-    } else {
-        return fft_dispatch_cpu(input, zero_factor, root_table);
-    }
 }
 
 fn fft_dispatch_cpu<F: Field>(

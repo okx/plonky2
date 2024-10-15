@@ -8,10 +8,8 @@ use core::fmt::Debug;
 use plonky2_field::packed::PackedField;
 use unroll::unroll_for_loops;
 
-#[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+#[cfg(target_feature = "avx2")]
 use super::arch::x86_64::poseidon_goldilocks_avx2::poseidon_avx;
-#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
-use super::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512;
 use super::hash_types::HashOutTarget;
 use crate::field::extension::{Extendable, FieldExtension};
 use crate::field::types::{Field, PrimeField64};
@@ -783,15 +781,9 @@ pub trait Poseidon: PrimeField64 {
     }
 
     #[inline]
-    #[cfg(all(target_feature = "avx2", not(target_feature = "avx512dq")))]
+    #[cfg(all(target_feature = "avx2"))]
     fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
         poseidon_avx(&input)
-    }
-
-    #[inline]
-    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
-    fn poseidon(input: [Self; SPONGE_WIDTH]) -> [Self; SPONGE_WIDTH] {
-        poseidon_avx512(&input)
     }
 
     // For testing only, to ensure that various tricks are correct.
@@ -986,6 +978,31 @@ pub(crate) mod test_helpers {
         let output_naive = F::poseidon_naive(input);
         for i in 0..SPONGE_WIDTH {
             assert_eq!(output[i], output_naive[i]);
+        }
+    }
+
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    pub(crate) fn check_test_vectors_avx512<F>(
+        test_vectors: Vec<([u64; SPONGE_WIDTH], [u64; SPONGE_WIDTH])>,
+    ) where
+        F: Poseidon,
+    {
+        use crate::hash::arch::x86_64::poseidon_goldilocks_avx512::poseidon_avx512_double;
+
+        println!("Checking test vectors with AVX512 Poseidon implementation...");
+
+        for (input_, expected_output_) in test_vectors.into_iter() {
+            let mut input = [F::ZERO; 2 * SPONGE_WIDTH];
+            for i in 0..SPONGE_WIDTH {
+                input[i] = F::from_canonical_u64(input_[i]);
+                input[i + SPONGE_WIDTH] = F::from_canonical_u64(input_[i]);
+            }
+            let output = poseidon_avx512_double::<F>(&input);
+            for i in 0..SPONGE_WIDTH {
+                let ex_output = F::from_canonical_u64(expected_output_[i]);
+                assert_eq!(output[i], ex_output);
+                assert_eq!(output[i + SPONGE_WIDTH], ex_output);
+            }
         }
     }
 }

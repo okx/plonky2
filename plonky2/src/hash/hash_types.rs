@@ -104,6 +104,12 @@ impl<F: RichField> GenericHashOut<F> for HashOut<F> {
     fn to_vec(&self) -> Vec<F> {
         self.elements.to_vec()
     }
+
+    fn from_vec(vec: &[F]) -> Self {
+        HashOut {
+            elements: vec.try_into().unwrap(),
+        }
+    }
 }
 
 impl<F: Field> Default for HashOut<F> {
@@ -189,6 +195,15 @@ impl<F: RichField, const N: usize> GenericHashOut<F> for BytesHash<N> {
                 F::from_canonical_u64(u64::from_le_bytes(arr))
             })
             .collect()
+    }
+
+    fn from_vec(vec: &[F]) -> Self {
+        let mut bytes = [0; N];
+        for (i, &x) in vec.iter().enumerate() {
+            let arr = x.to_canonical_u64().to_le_bytes();
+            bytes[i * 8..(i + 1) * 8].copy_from_slice(&arr);
+        }
+        Self(bytes)
     }
 }
 

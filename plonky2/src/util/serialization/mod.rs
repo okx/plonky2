@@ -11,7 +11,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::mem::size_of;
 use core::ops::Range;
 #[cfg(feature = "std")]
-use std::{collections::BTreeMap};
+use std::collections::BTreeMap;
 
 pub use gate_serialization::default::DefaultGateSerializer;
 pub use gate_serialization::GateSerializer;

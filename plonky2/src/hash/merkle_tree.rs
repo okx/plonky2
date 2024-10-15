@@ -23,6 +23,8 @@ use once_cell::sync::Lazy;
 use plonky2_maybe_rayon::*;
 use serde::{Deserialize, Serialize};
 
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+use crate::hash::arch::x86_64::poseidon_goldilocks_avx512::{hash_leaf_avx512, hash_two_avx512};
 use crate::hash::hash_types::RichField;
 #[cfg(feature = "cuda")]
 use crate::hash::hash_types::NUM_HASH_OUT_ELTS;
@@ -257,6 +259,140 @@ fn fill_digests_buf<F: RichField, H: Hasher<F>>(
     */
 }
 
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+fn fill_subtree_poseidon_avx512<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &[F],
+    leaf_size: usize,
+) -> H::Hash {
+    let leaves_count = leaves.len() / leaf_size;
+
+    // if one leaf => return its hash
+    if leaves_count == 1 {
+        let hash = H::hash_or_noop(leaves);
+        digests_buf[0].write(hash);
+        return hash;
+    }
+    // if two leaves => return their concat hash
+    if leaves_count == 2 {
+        let (h1, h2) = hash_leaf_avx512(leaves, leaf_size);
+        let hash_left = H::Hash::from_vec(&h1);
+        let hash_right = H::Hash::from_vec(&h2);
+        digests_buf[0].write(hash_left);
+        digests_buf[1].write(hash_right);
+        return H::two_to_one(hash_left, hash_right);
+    }
+
+    assert_eq!(leaves_count, digests_buf.len() / 2 + 1);
+
+    // leaves first - we can do all in parallel
+    let (_, digests_leaves) = digests_buf.split_at_mut(digests_buf.len() - leaves_count);
+    digests_leaves
+        .par_chunks_mut(2)
+        .into_par_iter()
+        .enumerate()
+        .for_each(|(chunk_idx, digests)| {
+            let (_, r) = leaves.split_at(2 * chunk_idx * leaf_size);
+            let (leaves2, _) = r.split_at(2 * leaf_size);
+            let (h1, h2) = hash_leaf_avx512(leaves2, leaf_size);
+            let h1 = H::Hash::from_vec(&h1);
+            let h2 = H::Hash::from_vec(&h2);
+            digests[0].write(h1);
+            digests[1].write(h2);
+        });
+
+    // internal nodes - we can do in parallel per level
+    let mut last_index = digests_buf.len() - leaves_count;
+
+    for level_log in range(1, log2_strict(leaves_count)).rev() {
+        let level_size = 1 << level_log;
+        let (_, digests_slice) = digests_buf.split_at_mut(last_index - level_size);
+        let (digests_slice, next_digests) = digests_slice.split_at_mut(level_size);
+
+        digests_slice
+            .par_chunks_mut(2)
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(chunk_idx, digests)| {
+                let idx = last_index - level_size + 2 * chunk_idx;
+                let left_idx1 = 2 * (idx + 1) - last_index;
+                let right_idx1 = left_idx1 + 1;
+                let left_idx2 = right_idx1 + 1;
+                let right_idx2 = left_idx2 + 1;
+
+                unsafe {
+                    let left_digest1 = next_digests[left_idx1].assume_init().to_vec();
+                    let right_digest1 = next_digests[right_idx1].assume_init().to_vec();
+                    let left_digest2 = next_digests[left_idx2].assume_init().to_vec();
+                    let right_digest2 = next_digests[right_idx2].assume_init().to_vec();
+
+                    let (h1, h2) = hash_two_avx512(
+                        &left_digest1,
+                        &right_digest1,
+                        &left_digest2,
+                        &right_digest2,
+                    );
+                    let h1 = H::Hash::from_vec(&h1);
+                    let h2 = H::Hash::from_vec(&h2);
+                    digests[0].write(h1);
+                    digests[1].write(h2);
+                }
+            });
+        last_index -= level_size;
+    }
+
+    // return cap hash
+    let hash: <H as Hasher<F>>::Hash;
+    unsafe {
+        let left_digest = digests_buf[0].assume_init();
+        let right_digest = digests_buf[1].assume_init();
+        hash = H::two_to_one(left_digest, right_digest);
+    }
+    hash
+}
+
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+fn fill_digests_buf_poseidon_avx515<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
+    cap_height: usize,
+) {
+    let leaves_count = leaves.len() / leaf_size;
+    if digests_buf.is_empty() {
+        debug_assert_eq!(cap_buf.len(), leaves_count);
+        cap_buf
+            .par_chunks_mut(2)
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(leaf_idx, cap_buf)| {
+                let (_, r) = leaves.split_at(2 * leaf_idx * leaf_size);
+                let (lv, _) = r.split_at(2 * leaf_size);
+                let (h1, h2) = hash_leaf_avx512(lv, leaf_size);
+                cap_buf[0].write(H::Hash::from_vec(&h1));
+                cap_buf[1].write(H::Hash::from_vec(&h2));
+            });
+        return;
+    }
+
+    let subtree_digests_len = digests_buf.len() >> cap_height;
+    let subtree_leaves_len = leaves_count >> cap_height;
+    let digests_chunks = digests_buf.par_chunks_exact_mut(subtree_digests_len);
+    let leaves_chunks = leaves.par_chunks_exact(subtree_leaves_len * leaf_size);
+    assert_eq!(digests_chunks.len(), cap_buf.len());
+    assert_eq!(digests_chunks.len(), leaves_chunks.len());
+    digests_chunks.zip(cap_buf).zip(leaves_chunks).for_each(
+        |((subtree_digests, subtree_cap), subtree_leaves)| {
+            subtree_cap.write(fill_subtree_poseidon_avx512::<F, H>(
+                subtree_digests,
+                subtree_leaves,
+                leaf_size,
+            ));
+        },
+    );
+}
+
 #[cfg(feature = "cuda")]
 fn fill_digests_buf_gpu<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
@@ -379,20 +515,24 @@ fn fill_digests_buf_gpu_ptr<F: RichField, H: Hasher<F>>(
     let stream1 = CudaStream::create().unwrap();
     let stream2 = CudaStream::create().unwrap();
 
-    gpu_digests_buf
-        .copy_to_host_ptr_async(
-            digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            digests_size,
-            &stream1,
-        )
-        .expect("copy digests");
-    gpu_cap_buf
-        .copy_to_host_ptr_async(
-            cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
-            caps_size,
-            &stream2,
-        )
-        .expect("copy caps");
+    if digests_buf.len() != 0 {
+        gpu_digests_buf
+            .copy_to_host_ptr_async(
+                digests_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                digests_size,
+                &stream1,
+            )
+            .expect("copy digests");
+    }
+    if cap_buf.len() != 0 {
+        gpu_cap_buf
+            .copy_to_host_ptr_async(
+                cap_buf.as_mut_ptr() as *mut core::ffi::c_void,
+                caps_size,
+                &stream2,
+            )
+            .expect("copy caps");
+    }
     stream1.synchronize().expect("cuda sync");
     stream2.synchronize().expect("cuda sync");
     stream1.destroy().expect("cuda stream destroy");
@@ -451,7 +591,10 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     }
 }
 
-#[cfg(not(feature = "cuda"))]
+#[cfg(all(
+    not(feature = "cuda"),
+    not(all(target_feature = "avx2", target_feature = "avx512dq"))
+))]
 fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     digests_buf: &mut [MaybeUninit<H::Hash>],
     cap_buf: &mut [MaybeUninit<H::Hash>],
@@ -460,6 +603,29 @@ fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
     cap_height: usize,
 ) {
     fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
+}
+
+#[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+fn fill_digests_buf_meta<F: RichField, H: Hasher<F>>(
+    digests_buf: &mut [MaybeUninit<H::Hash>],
+    cap_buf: &mut [MaybeUninit<H::Hash>],
+    leaves: &Vec<F>,
+    leaf_size: usize,
+    cap_height: usize,
+) {
+    use crate::plonk::config::HasherType;
+
+    if leaf_size <= H::HASH_SIZE / 8 || H::HASHER_TYPE != HasherType::Poseidon {
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, leaves, leaf_size, cap_height);
+    } else {
+        fill_digests_buf_poseidon_avx515::<F, H>(
+            digests_buf,
+            cap_buf,
+            leaves,
+            leaf_size,
+            cap_height,
+        );
+    }
 }
 
 impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
@@ -474,10 +640,10 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         );
 
         let num_digests = 2 * (leaves_len - (1 << cap_height));
-        let mut digests = Vec::with_capacity(num_digests);
+        let mut digests: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(num_digests);
 
         let len_cap = 1 << cap_height;
-        let mut cap = Vec::with_capacity(len_cap);
+        let mut cap: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(len_cap);
 
         let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
         let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
@@ -545,6 +711,16 @@ impl<F: RichField, H: Hasher<F>> MerkleTree<F, H> {
         leaf_len: usize,
         cap_height: usize,
     ) -> Self {
+        // special case
+        if leaf_len <= H::HASH_SIZE / 8 || H::HASHER_TYPE == HasherType::Keccak {
+            let mut host_leaves: Vec<F> = vec![F::ZERO; leaves_len * leaf_len];
+            leaves_gpu_ptr
+                .copy_to_host(host_leaves.as_mut_slice(), leaves_len * leaf_len)
+                .expect("copy to host error");
+            return Self::new_from_1d(host_leaves, leaf_len, cap_height);
+        }
+
+        // general case
         let log2_leaves_len = log2_strict(leaves_len);
         assert!(
             cap_height <= log2_leaves_len,
@@ -850,8 +1026,13 @@ mod tests {
         GenericConfig, KeccakGoldilocksConfig, Poseidon2GoldilocksConfig, PoseidonGoldilocksConfig,
     };
 
-    fn random_data<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
+    fn random_data_2d<F: RichField>(n: usize, k: usize) -> Vec<Vec<F>> {
         (0..n).map(|_| F::rand_vec(k)).collect()
+    }
+
+    #[allow(unused)]
+    fn random_data_1d<F: RichField>(n: usize, k: usize) -> Vec<F> {
+        F::rand_vec(k * n)
     }
 
     fn verify_all_leaves<
@@ -877,12 +1058,12 @@ mod tests {
 
         let n = 1 << log_n;
         let k = 7;
-        let mut leaves = random_data::<F>(n, k);
+        let mut leaves = random_data_2d::<F>(n, k);
 
         let mut mt1 =
             MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves.clone(), cap_h);
 
-        let tmp = random_data::<F>(1, k);
+        let tmp = random_data_2d::<F>(1, k);
         leaves[0] = tmp[0].clone();
         let mt2 = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves, cap_h);
 
@@ -932,8 +1113,8 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
-        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+        let raw_leaves: Vec<Vec<F>> = random_data_2d::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data_2d::<F>(end_index - start_index, leaf_size);
 
         let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
         let leaves2_1d: Vec<F> = leaves1_1d.clone();
@@ -1015,8 +1196,8 @@ mod tests {
         type C = PoseidonGoldilocksConfig;
         type F = <C as GenericConfig<D>>::F;
 
-        let raw_leaves: Vec<Vec<F>> = random_data::<F>(leaves_count, leaf_size);
-        let vals: Vec<Vec<F>> = random_data::<F>(end_index - start_index, leaf_size);
+        let raw_leaves: Vec<Vec<F>> = random_data_2d::<F>(leaves_count, leaf_size);
+        let vals: Vec<Vec<F>> = random_data_2d::<F>(end_index - start_index, leaf_size);
 
         let mut leaves1_1d: Vec<F> = raw_leaves.into_iter().flatten().collect();
         let leaves2_1d: Vec<F> = leaves1_1d.clone();
@@ -1098,7 +1279,7 @@ mod tests {
         let log_n = 8;
         let cap_height = log_n + 1; // Should panic if `cap_height > len_n`.
 
-        let leaves = random_data::<F>(1 << log_n, 7);
+        let leaves = random_data_2d::<F>(1 << log_n, 7);
         let _ = MerkleTree::<F, <C as GenericConfig<D>>::Hasher>::new_from_2d(leaves, cap_height);
     }
 
@@ -1110,7 +1291,7 @@ mod tests {
 
         let log_n = 8;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, log_n)?;
 
@@ -1164,7 +1345,7 @@ mod tests {
 
         let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
@@ -1180,7 +1361,7 @@ mod tests {
 
         let log_n = 14;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
         let leaves_1d: Vec<F> = leaves.into_iter().flatten().collect();
 
         let mut gpu_data: HostOrDeviceSlice<'_, F> =
@@ -1202,7 +1383,7 @@ mod tests {
 
         let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
@@ -1217,7 +1398,7 @@ mod tests {
 
         let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
 
@@ -1232,9 +1413,77 @@ mod tests {
 
         let log_n = 12;
         let n = 1 << log_n;
-        let leaves = random_data::<F>(n, 7);
+        let leaves = random_data_2d::<F>(n, 7);
 
         verify_all_leaves::<F, C, D>(leaves, 1)?;
+
+        Ok(())
+    }
+
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    fn check_consistency<F: RichField, H: Hasher<F>>(
+        leaves: &Vec<F>,
+        leaves_len: usize,
+        leaf_size: usize,
+        cap_height: usize,
+    ) {
+        println!("Check for height: {:?}", cap_height);
+        // no AVX
+        let num_digests = 2 * (leaves_len - (1 << cap_height));
+        let mut digests: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(num_digests);
+        let len_cap = 1 << cap_height;
+        let mut cap: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(len_cap);
+        let digests_buf = capacity_up_to_mut(&mut digests, num_digests);
+        let cap_buf = capacity_up_to_mut(&mut cap, len_cap);
+        fill_digests_buf::<F, H>(digests_buf, cap_buf, &leaves.clone(), leaf_size, cap_height);
+        unsafe {
+            digests.set_len(num_digests);
+            cap.set_len(len_cap);
+        }
+        // AVX512
+        let mut digests_avx512: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(num_digests);
+        let mut cap_avx512: Vec<<H as Hasher<F>>::Hash> = Vec::with_capacity(len_cap);
+        let digests_buf_avx512 = capacity_up_to_mut(&mut digests_avx512, num_digests);
+        let cap_buf_avx512 = capacity_up_to_mut(&mut cap_avx512, len_cap);
+        fill_digests_buf_poseidon_avx515::<F, H>(
+            digests_buf_avx512,
+            cap_buf_avx512,
+            &leaves,
+            leaf_size,
+            cap_height,
+        );
+        unsafe {
+            digests_avx512.set_len(num_digests);
+            cap_avx512.set_len(len_cap);
+        }
+
+        digests
+            .into_iter()
+            .zip(digests_avx512)
+            .for_each(|(d1, d2)| {
+                assert_eq!(d1, d2);
+            });
+        cap.into_iter().zip(cap_avx512).for_each(|(d1, d2)| {
+            assert_eq!(d1, d2);
+        });
+    }
+
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    #[test]
+    fn test_merkle_trees_poseidon_g64_avx512_consistency() -> Result<()> {
+        const D: usize = 2;
+        type C = PoseidonGoldilocksConfig;
+        type F = <C as GenericConfig<D>>::F;
+        type H = <C as GenericConfig<D>>::Hasher;
+
+        let leaf_size = 16;
+        let log_n = 10;
+        let leaves_len = 1 << log_n;
+        let leaves: Vec<F> = random_data_1d::<F>(leaves_len, leaf_size);
+
+        for cap_height in 0..log_n {
+            check_consistency::<F, H>(&leaves, leaves_len, leaf_size, cap_height);
+        }
 
         Ok(())
     }
