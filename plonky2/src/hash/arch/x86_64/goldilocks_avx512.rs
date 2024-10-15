@@ -7,11 +7,26 @@ const MSB_: i64 = 0x8000000000000000u64 as i64;
 const P8_: i64 = 0xFFFFFFFF00000001u64 as i64;
 const P8_N_: i64 = 0xFFFFFFFF;
 
+#[allow(non_snake_case)]
+#[repr(align(64))]
+struct FieldConstants {
+    MSB_V: [i64; 8],
+    P8_V: [i64; 8],
+    P8_N_V: [i64; 8],
+}
+
+const FC: FieldConstants = FieldConstants {
+    MSB_V: [MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_],
+    P8_V: [P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_],
+    P8_N_V: [P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_],
+};
+
 #[allow(dead_code)]
 #[inline(always)]
 pub fn shift_avx512(a: &__m512i) -> __m512i {
     unsafe {
-        let msb = _mm512_set_epi64(MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_);
+        // let msb = _mm512_set_epi64(MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_);
+        let msb = _mm512_load_si512(FC.MSB_V.as_ptr().cast::<i32>());
         _mm512_xor_si512(*a, msb)
     }
 }
@@ -20,17 +35,20 @@ pub fn shift_avx512(a: &__m512i) -> __m512i {
 #[inline(always)]
 pub fn to_canonical_avx512(a: &__m512i) -> __m512i {
     unsafe {
-        let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
-        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        // let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
+        // let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let p8 = _mm512_load_si512(FC.P8_V.as_ptr().cast::<i32>());
+        let p8_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
         let result_mask = _mm512_cmpge_epu64_mask(*a, p8);
         _mm512_mask_add_epi64(*a, result_mask, *a, p8_n)
     }
 }
 
 #[inline(always)]
-pub fn add_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
+pub fn add_avx512(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
-        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        // let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let p8_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
         let c0 = _mm512_add_epi64(*a, *b);
         let result_mask = _mm512_cmpgt_epu64_mask(*a, c0);
         _mm512_mask_add_epi64(c0, result_mask, c0, p8_n)
@@ -38,9 +56,10 @@ pub fn add_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
 }
 
 #[inline(always)]
-pub fn sub_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
+pub fn sub_avx512(a: &__m512i, b: &__m512i) -> __m512i {
     unsafe {
-        let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
+        // let p8 = _mm512_set_epi64(P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_);
+        let p8 = _mm512_load_si512(FC.P8_V.as_ptr().cast::<i32>());
         let c0 = _mm512_sub_epi64(*a, *b);
         let result_mask = _mm512_cmpgt_epu64_mask(*b, *a);
         _mm512_mask_add_epi64(c0, result_mask, c0, p8)
@@ -50,11 +69,25 @@ pub fn sub_avx512_b_c(a: &__m512i, b: &__m512i) -> __m512i {
 #[inline(always)]
 pub fn reduce_avx512_128_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
     unsafe {
-        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        // let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let p8_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
         let c_hh = _mm512_srli_epi64(*c_h, 32);
-        let c1 = sub_avx512_b_c(c_l, &c_hh);
+        let c1 = sub_avx512(c_l, &c_hh);
         let c2 = _mm512_mul_epu32(*c_h, p8_n);
-        add_avx512_b_c(&c1, &c2)
+        add_avx512(&c1, &c2)
+    }
+}
+
+// Here we suppose c_h < 2^32
+#[inline(always)]
+pub fn reduce_avx512_96_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
+    unsafe {
+        let msb = _mm512_load_si512(FC.MSB_V.as_ptr().cast::<i32>());
+        let p_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
+        let c_ls = _mm512_xor_si512(*c_l, msb);
+        let c2 = _mm512_mul_epu32(*c_h, p_n);
+        let c_s = add_avx512(&c_ls, &c2);
+        _mm512_xor_si512(c_s, msb)
     }
 }
 
@@ -69,7 +102,8 @@ pub fn mult_avx512_128(a: &__m512i, b: &__m512i) -> (__m512i, __m512i) {
         let c_ll = _mm512_mul_epu32(*a, *b);
         let c_ll_h = _mm512_srli_epi64(c_ll, 32);
         let r0 = _mm512_add_epi64(c_hl, c_ll_h);
-        let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        // let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
+        let p8_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
         let r0_l = _mm512_and_si512(r0, p8_n);
         let r0_h = _mm512_srli_epi64(r0, 32);
         let r1 = _mm512_add_epi64(c_lh, r0_l);

@@ -449,6 +449,8 @@ mod tests {
 
     use crate::field::goldilocks_field::GoldilocksField as F;
     use crate::field::types::{Field, PrimeField64};
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    use crate::hash::poseidon::test_helpers::check_test_vectors_avx512;
     use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors};
     use crate::hash::poseidon::{Poseidon, PoseidonHash};
     use crate::plonk::config::Hasher;
@@ -488,7 +490,10 @@ mod tests {
               0xfcc781b0ce382bf2, 0x934c69ff3ed14ba5, 0x504688a5996e8f13, 0x401f3f2ed524a2ba, ]),
         ];
 
-        check_test_vectors::<F>(test_vectors12);
+        check_test_vectors::<F>(test_vectors12.clone());
+
+        #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+        check_test_vectors_avx512::<F>(test_vectors12);
     }
 
     #[test]
