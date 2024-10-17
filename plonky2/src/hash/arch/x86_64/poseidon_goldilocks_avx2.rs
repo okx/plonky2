@@ -1164,7 +1164,7 @@ unsafe fn mds_layer_avx(s0: &mut __m256i, s1: &mut __m256i, s2: &mut __m256i) {
     let (rl0, c0) = add64_no_carry(&sl0, &shl0);
     let (rh0, _) = add64_no_carry(&shh0, &c0);
     let r0 = reduce_avx_128_64(&rh0, &rl0);
-
+    
     let (rl1, c1) = add64_no_carry(&sl1, &shl1);
     let (rh1, _) = add64_no_carry(&shh1, &c1);
     *s1 = reduce_avx_128_64(&rh1, &rl1);
@@ -1393,7 +1393,7 @@ where
     F: PrimeField64 + Poseidon,
 {
     let mut state = &mut input.clone();
-    let mut round_ctr = 0;
+    let mut round_ctr = 0;    
 
     unsafe {
         // load state
@@ -1410,12 +1410,13 @@ where
             let rc2 = _mm256_loadu_si256((&rc[8..12]).as_ptr().cast::<__m256i>());
             let ss0 = add_avx(&s0, &rc0);
             let ss1 = add_avx(&s1, &rc1);
-            let ss2 = add_avx(&s2, &rc2);
+            let ss2 = add_avx(&s2, &rc2);            
+
             (s0, s1, s2) = sbox_avx_m256i(&ss0, &ss1, &ss2);
             mds_layer_avx(&mut s0, &mut s1, &mut s2);
-            round_ctr += 1;
+            round_ctr += 1;           
         }
-
+       
         // this does partial_first_constant_layer_avx(&mut state);
         let c0 = _mm256_loadu_si256(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT[0..4])
@@ -1441,7 +1442,7 @@ where
         _mm256_storeu_si256((state[0..4]).as_mut_ptr().cast::<__m256i>(), s0);
         _mm256_storeu_si256((state[4..8]).as_mut_ptr().cast::<__m256i>(), s1);
         _mm256_storeu_si256((state[8..12]).as_mut_ptr().cast::<__m256i>(), s2);
-
+        
         for i in 0..N_PARTIAL_ROUNDS {
             state[0] = sbox_monomial(state[0]);
             state[0] = state[0].add_canonical_u64(FAST_PARTIAL_ROUND_CONSTANTS[i]);

@@ -46,14 +46,36 @@ pub fn to_canonical_avx512(a: &__m512i) -> __m512i {
 
 #[inline(always)]
 pub fn add_avx512(a: &__m512i, b: &__m512i) -> __m512i {
+    /*
     unsafe {
         // let p8_n = _mm512_set_epi64(P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_);
-        let p8_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
+        let p8_n = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
         let c0 = _mm512_add_epi64(*a, *b);
         let result_mask = _mm512_cmpgt_epu64_mask(*a, c0);
         _mm512_mask_add_epi64(c0, result_mask, c0, p8_n)
     }
+    */
+    unsafe {
+    let msb = _mm512_load_epi64(FC.MSB_V.as_ptr().cast::<i64>());
+        let a_sc = _mm512_xor_si512(*a, msb);
+        let c0_s = _mm512_add_epi64(a_sc, *b);
+        let p_n = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
+        let mask_ = _mm512_cmpgt_epi64_mask(a_sc, c0_s);
+        let c_s = _mm512_mask_add_epi64(c0_s, mask_, c0_s, p_n);
+        _mm512_xor_si512(c_s, msb)
+    }
 }
+
+#[inline(always)]
+pub fn add_avx512_s_b_small(a_s: &__m512i, b_small: &__m512i) -> __m512i {
+    unsafe {
+        let corr = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
+        let c0_s = _mm512_add_epi64(*a_s, *b_small);
+        let mask_ = _mm512_cmpgt_epi64_mask(*a_s, c0_s);
+        _mm512_mask_add_epi64(c0_s, mask_, c0_s, corr)
+    }
+}
+
 
 #[inline(always)]
 pub fn sub_avx512(a: &__m512i, b: &__m512i) -> __m512i {
@@ -82,11 +104,12 @@ pub fn reduce_avx512_128_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
 #[inline(always)]
 pub fn reduce_avx512_96_64(c_h: &__m512i, c_l: &__m512i) -> __m512i {
     unsafe {
-        let msb = _mm512_load_si512(FC.MSB_V.as_ptr().cast::<i32>());
-        let p_n = _mm512_load_si512(FC.P8_N_V.as_ptr().cast::<i32>());
+        let msb = _mm512_load_epi64(FC.MSB_V.as_ptr().cast::<i64>());
+        let p_n = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
         let c_ls = _mm512_xor_si512(*c_l, msb);
         let c2 = _mm512_mul_epu32(*c_h, p_n);
-        let c_s = add_avx512(&c_ls, &c2);
+        let c_s = add_avx512_s_b_small(&c_ls, &c2);
+        // let c_s = add_avx512(&c_ls, &c2);
         _mm512_xor_si512(c_s, msb)
     }
 }

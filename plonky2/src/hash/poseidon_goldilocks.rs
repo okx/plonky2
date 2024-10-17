@@ -450,6 +450,8 @@ mod tests {
     use crate::field::goldilocks_field::GoldilocksField as F;
     use crate::field::types::{Field, PrimeField64};
     #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+    use crate::hash::arch::x86_64::poseidon_goldilocks_avx512::hash_leaf_avx512;
+    #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
     use crate::hash::poseidon::test_helpers::check_test_vectors_avx512;
     use crate::hash::poseidon::test_helpers::{check_consistency, check_test_vectors};
     use crate::hash::poseidon::{Poseidon, PoseidonHash};
@@ -488,6 +490,12 @@ mod tests {
              [0xa89280105650c4ec, 0xab542d53860d12ed, 0x5704148e9ccab94f, 0xd3a826d4b62da9f5,
               0x8a7a6ca87892574f, 0xc7017e1cad1a674e, 0x1f06668922318e34, 0xa3b203bc8102676f,
               0xfcc781b0ce382bf2, 0x934c69ff3ed14ba5, 0x504688a5996e8f13, 0x401f3f2ed524a2ba, ]),
+            ([0xf2cc0ce426e7eddd, 0x91ad40f14cfdcb78, 0xc516c642346aabc,  0xa79a0411d96de0,
+              0xf256c881b6167069, 0x5c767aa6354a647b, 0x79a821313415b9dc, 0xf083bc2f276b99e1,
+              0x9aa0ac0171df5ac7, 0xc3c705daf69d66e0, 0x3b0468abe66c5ed, 0xdcf835c4d4cffd73, ],
+             [0x96d91d333e5e038d, 0x114395c7cfb7e18f, 0x19b1ea99556391ff, 0xd53855a776b4582a,
+              0x378d8ea4ffbb7545, 0x168319892eff226a, 0x5f09f06508283bd, 0xb92d599c947cc2f1,
+              0xf078fc732200e4d4, 0xcaf95e4285f3099d, 0x8532be1f10f23cd0, 0xc3260991186909ff, ])
         ];
 
         check_test_vectors::<F>(test_vectors12.clone());
@@ -576,40 +584,144 @@ mod tests {
 
     #[test]
     fn test_hash_no_pad_gl() {
-        let inputs: [u64; 32] = [
-            9972144316416239374,
-            7195869958086994472,
-            12805395537960412263,
-            6755149769410714396,
-            16592921959755212957,
-            1370750654791741308,
-            11186995120529280354,
-            288690570896506034,
-            2896720011649362435,
-            13870686984275550055,
-            12288026009924247278,
-            15608864109019511973,
-            15690944173815210604,
-            17535150735055770942,
-            4265223756233917229,
-            17236464151311603291,
-            15180455466814482598,
-            12377438429067983442,
-            11274960245127600167,
-            5684300978461808754,
-            1918159483831849502,
-            15340265949423289730,
-            181633163915570313,
-            12684059848091546996,
-            10060377187090493210,
-            13523019938818230572,
-            16846214147461656883,
-            13560222746484567233,
-            2150999602305437005,
-            9103462636082953981,
-            16341057499572706412,
-            842265247111451937,
+        let inputs = [
+            0xb8f463d7cb4f24f6,
+            0xe94ad9aba668af65,
+            0x4a31c8cee787786a,
+            0x7f8ed7050aeadcf9,
+            0x516c34f52a5c8b14,
+            0x542c22306722b175,
+            0x6feba1eb9030ecb9,
+            0xe103d491fa784080,
+            0x31d9a62ea39f4ec9,
+            0xbf0ccc95d9b4c697,
+            0x5a9d230167523b2e,
+            0x7ff277e12091d2f2,
+            0xf2af521b9537abf3,
+            0xe39e815313da5c12,
+            0xe5feaa1e4f46b87b,
+            0x76b772a9e6eda11c,
+            0x9005e1c8fbf27eed,
+            0x78ea9242b53108ac,
+            0x5561d33040b6affb,
+            0x61ded48ffee1f243,
+            0xebbe0c4034afb9e5,
+            0x7973d462ab14d331,
+            0x76a23e459a0849b,
+            0x9fa93d23d8b84515,
+            0x1e19bba2ce8042dd,
+            0xb1159302625b71a3,
+            0x792e2e4171fd7e83,
+            0xc9088b032be7eff0,
+            0x6540b29fbec19cb2,
+            0x8c4f849dd68f4cdc,
+            0xb91969b7cfcd1ec8,
+            0x4d450eff6a3b0c7c,
+            0xcace16a8345de56e,
+            0xe5bac07b93e1f0e2,
+            0x35088bde4f1bd3a9,
+            0x2e0bd8e257386e40,
+            0xed67fe1bd44680f0,
+            0x887a32a6049105f,
+            0x3ae86d4d60b87a67,
+            0x665a656a217edacf,
+            0x2eb451b933acbd2d,
+            0x63876760e9570fb4,
+            0x2b11da28eb95d7d6,
+            0x138ea36659579c0a,
+            0x457f674d92cfcd72,
+            0xba4b8ffc7287142d,
+            0x2b9bd3cd64e65cb6,
+            0x2780e8b0e66848e8,
+            0xe18303c5010835a4,
+            0x6c4e379aba35e21e,
+            0xf9c3f2f33320d9cd,
+            0x82429ba2d6263c9a,
+            0x11e81115fa995e88,
+            0x75a7fb5681cd15e4,
+            0xa54b2a0b6d57e340,
+            0x884b3d9cc9b7f720,
+            0xdac1b985f5b0ff19,
+            0x5938c0405a01dbd4,
+            0x13fb2d9399c3ef2e,
+            0xeaed82d3706dccec,
+            0xf8d853012e56f7fb,
+            0xa4c639bbaf484525,
+            0xe3b35501c21797ba,
+            0x1a645013fcb5e3a0,
+            0xf2eb2337ba169178,
+            0xcc94fd9269c7d33,
+            0x82a9aaa398b13f1,
+            0xe9b5ecbe6576234,
+            0x252287d7ed9ec792,
+            0x30629bee322f17cc,
+            0x9ae26078f44e8afb,
+            0xabdc35ac8f527136,
+            0x4b2a3be4ef4c231f,
+            0x23074d5363eeba58,
+            0x75cfe940f6967c16,
+            0xfb185a23f6225406,
+            0xda8a21bd2ba64cc3,
+            0xd623bde11eb8c989,
+            0x76201928e4523ba3,
+            0x1c20cb194495b643,
+            0x3e70ce2fddc52451,
+            0x86c698ca61fdae8e,
+            0x9855dd30ad0c1309,
+            0x271541a781755737,
+            0x209b4ccf7db16277,
+            0xff27cae2771d1d8c,
+            0xd7795488a7bfe6ee,
+            0x9cf1875ec535778e,
+            0x9fad94c126427390,
+            0x199b482c029f3d9d,
+            0x92ae2055bb3f6d6,
+            0x29d6100b44167374,
+            0x88e8c8ffdefe0f33,
+            0xa3d8d929ea748a62,
+            0xd5dbe1a3d99e113d,
+            0x438639f8f0e3ff25,
+            0xf2cc0ce426e7eddd,
+            0x91ad40f14cfdcb78,
+            0xc516c642346aabc,
+            0xa79a0411d96de0,
+            0xf256c881b6167069,
+            0x5c767aa6354a647b,
+            0x79a821313415b9dc,
+            0xf083bc2f276b99e1,
+            0x9d47fc86eb2de7c2,
+            0x3370a8711a678a03,
+            0x1572c8a8bf872b26,
+            0xdbb7de1fc45360a1,
+            0x5f87c0fe24bafdd4,
+            0x2f6a5784207d118a,
+            0x640c588afcf0cc14,
+            0xe609f3cbb7cb015,
+            0x8e4907544019be80,
+            0xde2f553ac4ab68c3,
+            0x29cd0d2800262365,
+            0x3bf736a6fbc14ce2,
+            0xab059c3c3cba4912,
+            0xe609e14997bd2f5c,
+            0x694189d934ff1f8d,
+            0x54570348f45e3a9,
+            0x90ef5b98b0a08a34,
+            0x1b09b93749616de8,
+            0x89be3144389d48c1,
+            0xdaa7e268d0fd82d8,
+            0xc46956b67fa89c61,
+            0xec88a7133e4fefc,
+            0xe41596ca682069f4,
+            0x297f55e46472431b,
+            0x33ada14fd813218d,
+            0x22c57ca5e77249ad,
+            0x4e2f2c7cc99f2d47,
+            0x78d11ba2efc7556f,
+            0xdfc98976b6e3ad0d,
+            0x59d88f72bf5ad1d8,
+            0x19ca05690b8e1ad9,
         ];
+
         let inputs = inputs
             .iter()
             .map(|x| F::from_canonical_u64(*x))
@@ -617,15 +729,25 @@ mod tests {
         let output = PoseidonHash::hash_no_pad(&inputs);
 
         let expected_out: [u64; 4] = [
-            8197835875512527937,
-            7109417654116018994,
-            18237163116575285904,
-            17017896878738047012,
+            0xc19dccf6ec4f3df3,
+            0x1bf0d65af6925451,
+            0xee9dbf2c8dcad9a2,
+            0xae46323715f528a1,
         ];
         let expected_out = expected_out
             .iter()
             .map(|x| F::from_canonical_u64(*x))
             .collect::<Vec<F>>();
         assert_eq!(output.elements.to_vec(), expected_out);
+
+        #[cfg(all(target_feature = "avx2", target_feature = "avx512dq"))]
+        {
+            let mut dleaf: Vec<F> = vec![F::from_canonical_u64(0); 2 * inputs.len()];
+            dleaf[0..inputs.len()].copy_from_slice(&inputs);
+            dleaf[inputs.len()..2 * inputs.len()].copy_from_slice(&inputs);
+            let (h1, h2) = hash_leaf_avx512(dleaf.as_slice(), inputs.len());
+            assert_eq!(h1, expected_out);
+            assert_eq!(h2, expected_out);
+        }
     }
 }

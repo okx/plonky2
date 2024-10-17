@@ -1271,11 +1271,36 @@ pub unsafe fn add64_no_carry_avx512(a: &__m512i, b: &__m512i) -> (__m512i, __m51
     let m = (ma & mb) | (!mc & ((!ma & mb) | (ma & !mb)));
     let co = _mm512_mask_blend_epi64(m, zeros, ones);
     (r, co)
+    /*
+    let mut va: [u64; 8] = [0; 8];
+    let mut vb: [u64; 8] = [0; 8];
+    let mut vr: [u64; 8] = [0; 8];
+    let mut vc: [u64; 8] = [0; 8];
+    _mm512_storeu_epi64(va.as_mut_ptr().cast::<i64>(), *a);
+    _mm512_storeu_epi64(vb.as_mut_ptr().cast::<i64>(), *b);
+    for i in 0..8 {
+        vr[i] = va[i].wrapping_add(vb[i]);
+        vc[i] = if vr[i] < va[i] { 1 } else { 0 };
+    }
+    let r = _mm512_loadu_epi64(vr.as_ptr().cast::<i64>());
+    let c = _mm512_loadu_epi64(vc.as_ptr().cast::<i64>());
+    (r, c)
+    */
 }
 
 #[inline]
 pub unsafe fn mul64_no_overflow_avx512(a: &__m512i, b: &__m512i) -> __m512i {
-    _mm512_mullo_epi64(*a, *b)
+    // _mm512_mullo_epi64(*a, *b)
+    let r = _mm512_mul_epu32(*a, *b);
+    let ah = _mm512_srli_epi64(*a, 32);
+    let bh = _mm512_srli_epi64(*b, 32);
+    let r1 = _mm512_mul_epu32(*a, bh);
+    let r1 = _mm512_slli_epi64(r1, 32);
+    let r = _mm512_add_epi64(r, r1);
+    let r1 = _mm512_mul_epu32(ah, *b);
+    let r1 = _mm512_slli_epi64(r1, 32);
+    let r = _mm512_add_epi64(r, r1);
+    r
 }
 
 #[inline(always)]
@@ -1479,8 +1504,8 @@ unsafe fn mds_multiply_freq_avx512(s0: &mut __m512i, s1: &mut __m512i, s2: &mut 
     let f0 = block1_avx512(&u0, MDS_FREQ_BLOCK_ONE);
 
     // let [v1, v5, v9] = block2([(u[0], v[0]), (u[1], v[1]), (u[2], v[2])], MDS_FREQ_BLOCK_TWO);
-    // let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
-    let (f1, f2) = block2_full_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    // let (f1, f2) = block2_full_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
 
     // let [v2, v6, v10] = block3_avx([u[0], u[1], u[2]], MDS_FREQ_BLOCK_ONE);
     // [u[0], u[1], u[2]] are all in u3
@@ -1795,6 +1820,7 @@ where
             let ss0 = add_avx512(&s0, &rc0);
             let ss1 = add_avx512(&s1, &rc1);
             let ss2 = add_avx512(&s2, &rc2);
+
             s0 = sbox_avx512_one(&ss0);
             s1 = sbox_avx512_one(&ss1);
             s2 = sbox_avx512_one(&ss2);
@@ -1900,13 +1926,13 @@ where
         leaf_size / SPONGE_RATE + 1
     };
     for _ in 0..loops {
-        let end1 = if idx1 + SPONGE_RATE > leaf_size {
+        let end1 = if idx1 + SPONGE_RATE >= leaf_size {
             leaf_size
         } else {
             idx1 + SPONGE_RATE
         };
-        let end2 = if idx2 + SPONGE_RATE > inputs.len() {
-            inputs.len()
+        let end2 = if idx2 + SPONGE_RATE >= 2 * leaf_size {
+            2 * leaf_size
         } else {
             idx2 + SPONGE_RATE
         };

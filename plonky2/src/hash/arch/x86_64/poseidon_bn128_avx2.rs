@@ -84,33 +84,12 @@ unsafe fn sub64(a: &__m256i, b: &__m256i, bin: &__m256i) -> (__m256i, __m256i) {
     let zeros = _mm256_set_epi64x(0, 0, 0, 0);
     let (r1, b1) = sub64_no_borrow(a, b);
 
-    // TODO - delete
-    /*
-    let mut v = [0i64; 4];
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), *a);
-    println!("a: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), *b);
-    println!("b: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), r1);
-    println!("r: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), b1);
-    println!("b: {:?}", v);
-    */
-
     let m1 = _mm256_cmpeq_epi64(*bin, ones);
     let m2 = _mm256_cmpeq_epi64(r1, zeros);
     let m = _mm256_and_si256(m1, m2);
     let bo = _mm256_and_si256(m, ones);
     let r = _mm256_sub_epi64(r1, *bin);
     let bo = _mm256_or_si256(bo, b1);
-
-    // TODO - delete
-    /*
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), r);
-    println!("r: {:?}", v);
-    _mm256_storeu_si256(v.as_mut_ptr().cast::<__m256i>(), bo);
-    println!("b: {:?}", v);
-    */
 
     (r, bo)
 }
