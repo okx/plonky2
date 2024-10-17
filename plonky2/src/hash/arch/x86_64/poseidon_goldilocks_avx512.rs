@@ -1290,7 +1290,8 @@ pub unsafe fn add64_no_carry_avx512(a: &__m512i, b: &__m512i) -> (__m512i, __m51
 
 #[inline]
 pub unsafe fn mul64_no_overflow_avx512(a: &__m512i, b: &__m512i) -> __m512i {
-    // _mm512_mullo_epi64(*a, *b)
+    /*
+    // long version
     let r = _mm512_mul_epu32(*a, *b);
     let ah = _mm512_srli_epi64(*a, 32);
     let bh = _mm512_srli_epi64(*b, 32);
@@ -1301,6 +1302,8 @@ pub unsafe fn mul64_no_overflow_avx512(a: &__m512i, b: &__m512i) -> __m512i {
     let r1 = _mm512_slli_epi64(r1, 32);
     let r = _mm512_add_epi64(r, r1);
     r
+    */
+    _mm512_mullo_epi64(*a, *b)
 }
 
 #[inline(always)]
@@ -1504,8 +1507,8 @@ unsafe fn mds_multiply_freq_avx512(s0: &mut __m512i, s1: &mut __m512i, s2: &mut 
     let f0 = block1_avx512(&u0, MDS_FREQ_BLOCK_ONE);
 
     // let [v1, v5, v9] = block2([(u[0], v[0]), (u[1], v[1]), (u[2], v[2])], MDS_FREQ_BLOCK_TWO);
-    let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
-    // let (f1, f2) = block2_full_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    // let (f1, f2) = block2_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
+    let (f1, f2) = block2_full_avx512(&u1, &u2, MDS_FREQ_BLOCK_TWO);
 
     // let [v2, v6, v10] = block3_avx([u[0], u[1], u[2]], MDS_FREQ_BLOCK_ONE);
     // [u[0], u[1], u[2]] are all in u3
