@@ -6,19 +6,22 @@ use crate::hash::hash_types::RichField;
 const MSB_: i64 = 0x8000000000000000u64 as i64;
 const P8_: i64 = 0xFFFFFFFF00000001u64 as i64;
 const P8_N_: i64 = 0xFFFFFFFF;
+const ONE_: i64 = 1;
 
 #[allow(non_snake_case)]
 #[repr(align(64))]
-struct FieldConstants {
-    MSB_V: [i64; 8],
-    P8_V: [i64; 8],
-    P8_N_V: [i64; 8],
+pub(crate) struct FieldConstants {
+    pub(crate) MSB_V: [i64; 8],
+    pub(crate) P8_V: [i64; 8],
+    pub(crate) P8_N_V: [i64; 8],
+    pub(crate) ONE_V: [i64; 8],
 }
 
-const FC: FieldConstants = FieldConstants {
+pub(crate) const FC: FieldConstants = FieldConstants {
     MSB_V: [MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_, MSB_],
     P8_V: [P8_, P8_, P8_, P8_, P8_, P8_, P8_, P8_],
     P8_N_V: [P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_, P8_N_],
+    ONE_V: [ONE_, ONE_, ONE_, ONE_, ONE_, ONE_, ONE_, ONE_],
 };
 
 #[allow(dead_code)]
