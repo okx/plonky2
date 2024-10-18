@@ -59,7 +59,7 @@ pub fn add_avx512(a: &__m512i, b: &__m512i) -> __m512i {
     }
     */
     unsafe {
-    let msb = _mm512_load_epi64(FC.MSB_V.as_ptr().cast::<i64>());
+        let msb = _mm512_load_epi64(FC.MSB_V.as_ptr().cast::<i64>());
         let a_sc = _mm512_xor_si512(*a, msb);
         let c0_s = _mm512_add_epi64(a_sc, *b);
         let p_n = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
@@ -78,7 +78,6 @@ pub fn add_avx512_s_b_small(a_s: &__m512i, b_small: &__m512i) -> __m512i {
         _mm512_mask_add_epi64(c0_s, mask_, c0_s, corr)
     }
 }
-
 
 #[inline(always)]
 pub fn sub_avx512(a: &__m512i, b: &__m512i) -> __m512i {
