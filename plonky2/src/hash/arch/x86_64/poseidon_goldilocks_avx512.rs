@@ -1134,8 +1134,8 @@ where
     let mut result = [F::ZERO; SPONGE_WIDTH];
     let res0 = state[0];
     unsafe {
-        let mut r0 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
-        let mut r1 = _mm512_loadu_si512((&mut result[4..12]).as_mut_ptr().cast::<i32>());
+        let mut r0 = _mm512_loadu_epi64((&mut result[0..8]).as_mut_ptr().cast::<i64>());
+        let mut r1 = _mm512_loadu_epi64((&mut result[4..12]).as_mut_ptr().cast::<i64>());
 
         for r in 1..12 {
             let sr512 = _mm512_set_epi64(
@@ -1148,23 +1148,23 @@ where
                 state[r].to_canonical_u64() as i64,
                 state[r].to_canonical_u64() as i64,
             );
-            let t0 = _mm512_loadu_si512(
+            let t0 = _mm512_loadu_epi64(
                 (&FAST_PARTIAL_ROUND_INITIAL_MATRIX[r][0..8])
                     .as_ptr()
-                    .cast::<i32>(),
+                    .cast::<i64>(),
             );
-            let t1 = _mm512_loadu_si512(
+            let t1 = _mm512_loadu_epi64(
                 (&FAST_PARTIAL_ROUND_INITIAL_MATRIX[r][4..12])
                     .as_ptr()
-                    .cast::<i32>(),
+                    .cast::<i64>(),
             );
             let m0 = mult_avx512(&sr512, &t0);
             let m1 = mult_avx512(&sr512, &t1);
             r0 = add_avx512(&r0, &m0);
             r1 = add_avx512(&r1, &m1);
         }
-        _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-        _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
+        _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), r0);
+        _mm512_storeu_epi64((state[4..12]).as_mut_ptr().cast::<i64>(), r1);
         state[0] = res0;
     }
 }
@@ -1177,22 +1177,22 @@ where
     F: PrimeField64,
 {
     unsafe {
-        let c0 = _mm512_loadu_si512(
+        let c0 = _mm512_loadu_epi64(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT[0..8])
                 .as_ptr()
-                .cast::<i32>(),
+                .cast::<i64>(),
         );
-        let c1 = _mm512_loadu_si512(
+        let c1 = _mm512_loadu_epi64(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT[4..12])
                 .as_ptr()
-                .cast::<i32>(),
+                .cast::<i64>(),
         );
-        let mut s0 = _mm512_loadu_si512((state[0..8]).as_ptr().cast::<i32>());
-        let mut s1 = _mm512_loadu_si512((state[4..12]).as_ptr().cast::<i32>());
+        let mut s0 = _mm512_loadu_epi64((state[0..8]).as_ptr().cast::<i64>());
+        let mut s1 = _mm512_loadu_epi64((state[4..12]).as_ptr().cast::<i64>());
         s0 = add_avx512(&s0, &c0);
         s1 = add_avx512(&s1, &c1);
-        _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), s0);
-        _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), s1);
+        _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), s0);
+        _mm512_storeu_epi64((state[4..12]).as_mut_ptr().cast::<i64>(), s1);
     }
 }
 
@@ -1262,19 +1262,34 @@ pub unsafe fn add64_no_carry_avx512(a: &__m512i, b: &__m512i) -> (__m512i, __m51
      *   - (test 3): if a + b < 2^64 (this means a + b is negative in signed representation) => no overflow so cout = 0
      *   - (test 3): if a + b >= 2^64 (this means a + b becomes positive in signed representation, that is, a + b >= 0) => there is overflow so cout = 1
      */
-    let ones = _mm512_set_epi64(1, 1, 1, 1, 1, 1, 1, 1);
+    let ones = _mm512_load_epi64(FC.ONE_V.as_ptr().cast::<i64>());
     let zeros = _mm512_xor_si512(*a, *a); // faster 0
     let r = _mm512_add_epi64(*a, *b);
     let ma = _mm512_cmpgt_epi64_mask(zeros, *a);
     let mb = _mm512_cmpgt_epi64_mask(zeros, *b);
     let mc = _mm512_cmpgt_epi64_mask(zeros, r);
-    let m = (ma & mb) | (!mc & ((!ma & mb) | (ma & !mb)));
+    // let m = (ma & mb) | (!mc & ((!ma & mb) | (ma & !mb)));
+    let m = (ma & mb) | (!mc & (ma ^ mb));
     let co = _mm512_mask_blend_epi64(m, zeros, ones);
     (r, co)
 }
 
 #[inline]
 pub unsafe fn mul64_no_overflow_avx512(a: &__m512i, b: &__m512i) -> __m512i {
+    /*
+    // long version
+    let r = _mm512_mul_epu32(*a, *b);
+    let ah = _mm512_srli_epi64(*a, 32);
+    let bh = _mm512_srli_epi64(*b, 32);
+    let r1 = _mm512_mul_epu32(*a, bh);
+    let r1 = _mm512_slli_epi64(r1, 32);
+    let r = _mm512_add_epi64(r, r1);
+    let r1 = _mm512_mul_epu32(ah, *b);
+    let r1 = _mm512_slli_epi64(r1, 32);
+    let r = _mm512_add_epi64(r, r1);
+    r
+    */
+    // short version
     _mm512_mullo_epi64(*a, *b)
 }
 
@@ -1301,16 +1316,16 @@ unsafe fn block1_avx512(x: &__m512i, y: [i64; 3]) -> __m512i {
 unsafe fn block2_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> (__m512i, __m512i) {
     let mut vxr: [i64; 8] = [0; 8];
     let mut vxi: [i64; 8] = [0; 8];
-    _mm512_storeu_si512(vxr.as_mut_ptr().cast::<i32>(), *xr);
-    _mm512_storeu_si512(vxi.as_mut_ptr().cast::<i32>(), *xi);
+    _mm512_storeu_epi64(vxr.as_mut_ptr().cast::<i64>(), *xr);
+    _mm512_storeu_epi64(vxi.as_mut_ptr().cast::<i64>(), *xi);
     let x1: [(i64, i64); 3] = [(vxr[0], vxi[0]), (vxr[1], vxi[1]), (vxr[2], vxi[2])];
     let x2: [(i64, i64); 3] = [(vxr[4], vxi[4]), (vxr[5], vxi[5]), (vxr[6], vxi[6])];
     let b1 = block2(x1, y);
     let b2 = block2(x2, y);
     vxr = [b1[0].0, b1[1].0, b1[2].0, 0, b2[0].0, b2[1].0, b2[2].0, 0];
     vxi = [b1[0].1, b1[1].1, b1[2].1, 0, b2[0].1, b2[1].1, b2[2].1, 0];
-    let rr = _mm512_loadu_si512(vxr.as_ptr().cast::<i32>());
-    let ri = _mm512_loadu_si512(vxi.as_ptr().cast::<i32>());
+    let rr = _mm512_loadu_epi64(vxr.as_ptr().cast::<i64>());
+    let ri = _mm512_loadu_epi64(vxi.as_ptr().cast::<i64>());
     (rr, ri)
 }
 
@@ -1343,18 +1358,9 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif1perm2 = _mm512_permutex_epi64(dif1, 0x2);
     let z0i = _mm512_add_epi64(dif3, dif1perm1);
     let z0i = _mm512_add_epi64(z0i, dif1perm2);
-    let mask = _mm512_set_epi64(
-        0,
-        0,
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-        0,
-        0,
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-    );
-    let z0r = _mm512_and_si512(z0r, mask);
-    let z0i = _mm512_and_si512(z0i, mask);
+    let zeros = _mm512_xor_si512(z0r, z0r);
+    let z0r = _mm512_mask_blend_epi64(0x11, zeros, z0r);
+    let z0i = _mm512_mask_blend_epi64(0x11, zeros, z0i);
 
     // z1
     // z1r = dif2[0] + dif2[1] + prod[2] - sum[2];
@@ -1377,18 +1383,8 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif1perm = _mm512_permutex_epi64(dif1, 0x8);
     let z1i = _mm512_add_epi64(dif3, dif3perm);
     let z1i = _mm512_add_epi64(z1i, dif1perm);
-    let mask = _mm512_set_epi64(
-        0,
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-        0,
-        0,
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-        0,
-    );
-    let z1r = _mm512_and_si512(z1r, mask);
-    let z1i = _mm512_and_si512(z1i, mask);
+    let z1r = _mm512_mask_blend_epi64(0x22, zeros, z1r);
+    let z1i = _mm512_mask_blend_epi64(0x22, zeros, z1i);
 
     // z2
     // z2r = dif2[0] + dif2[1] + dif2[2];
@@ -1410,18 +1406,8 @@ unsafe fn block2_full_avx512(xr: &__m512i, xi: &__m512i, y: [(i64, i64); 3]) -> 
     let dif3perm2 = _mm512_permutex_epi64(dif3, 0x10);
     let z2i = _mm512_add_epi64(dif3, dif3perm1);
     let z2i = _mm512_add_epi64(z2i, dif3perm2);
-    let mask = _mm512_set_epi64(
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-        0,
-        0,
-        0,
-        0xFFFFFFFFFFFFFFFFu64 as i64,
-        0,
-        0,
-    );
-    let z2r = _mm512_and_si512(z2r, mask);
-    let z2i = _mm512_and_si512(z2i, mask);
+    let z2r = _mm512_mask_blend_epi64(0x44, zeros, z2r);
+    let z2i = _mm512_mask_blend_epi64(0x44, zeros, z2i);
 
     let zr = _mm512_or_si512(z0r, z1r);
     let zr = _mm512_or_si512(zr, z2r);
@@ -1500,10 +1486,7 @@ unsafe fn mds_multiply_freq_avx512(s0: &mut __m512i, s1: &mut __m512i, s2: &mut 
 #[inline(always)]
 #[unroll_for_loops]
 unsafe fn mds_layer_avx512(s0: &mut __m512i, s1: &mut __m512i, s2: &mut __m512i) {
-    let mask = _mm512_set_epi64(
-        0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
-        0xFFFFFFFF,
-    );
+    let mask = _mm512_load_epi64(FC.P8_N_V.as_ptr().cast::<i64>());
     let mut sl0 = _mm512_and_si512(*s0, mask);
     let mut sl1 = _mm512_and_si512(*s1, mask);
     let mut sl2 = _mm512_and_si512(*s2, mask);
@@ -1545,48 +1528,48 @@ unsafe fn mds_partial_layer_init_avx512<F>(s0: &mut __m512i, s1: &mut __m512i, s
 where
     F: PrimeField64,
 {
-    let mut result = [F::ZERO; 2 * SPONGE_WIDTH];
     let res0 = *s0;
-
-    let mut r0 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
-    let mut r1 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
-    let mut r2 = _mm512_loadu_si512((&mut result[0..8]).as_mut_ptr().cast::<i32>());
+    let mut r0 = _mm512_xor_epi64(res0, res0);
+    let mut r1 = r0;
+    let mut r2 = r0;
     for r in 1..12 {
-        let sr = match r {
-            1 => _mm512_permutex_epi64(*s0, 0x55),
-            2 => _mm512_permutex_epi64(*s0, 0xAA),
-            3 => _mm512_permutex_epi64(*s0, 0xFF),
-            4 => _mm512_permutex_epi64(*s1, 0x0),
-            5 => _mm512_permutex_epi64(*s1, 0x55),
-            6 => _mm512_permutex_epi64(*s1, 0xAA),
-            7 => _mm512_permutex_epi64(*s1, 0xFF),
-            8 => _mm512_permutex_epi64(*s2, 0x0),
-            9 => _mm512_permutex_epi64(*s2, 0x55),
-            10 => _mm512_permutex_epi64(*s2, 0xAA),
-            11 => _mm512_permutex_epi64(*s2, 0xFF),
-            _ => _mm512_permutex_epi64(*s0, 0x55),
-        };
-        let t0 = _mm512_loadu_si512(
-            (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][0..8])
-                .as_ptr()
-                .cast::<i32>(),
-        );
-        let t1 = _mm512_loadu_si512(
-            (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][8..16])
-                .as_ptr()
-                .cast::<i32>(),
-        );
-        let t2 = _mm512_loadu_si512(
-            (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][16..24])
-                .as_ptr()
-                .cast::<i32>(),
-        );
-        let m0 = mult_avx512(&sr, &t0);
-        let m1 = mult_avx512(&sr, &t1);
-        let m2 = mult_avx512(&sr, &t2);
-        r0 = add_avx512(&r0, &m0);
-        r1 = add_avx512(&r1, &m1);
-        r2 = add_avx512(&r2, &m2);
+        if r < 12 {
+            let sr = match r {
+                1 => _mm512_permutex_epi64(*s0, 0x55),
+                2 => _mm512_permutex_epi64(*s0, 0xAA),
+                3 => _mm512_permutex_epi64(*s0, 0xFF),
+                4 => _mm512_permutex_epi64(*s1, 0x0),
+                5 => _mm512_permutex_epi64(*s1, 0x55),
+                6 => _mm512_permutex_epi64(*s1, 0xAA),
+                7 => _mm512_permutex_epi64(*s1, 0xFF),
+                8 => _mm512_permutex_epi64(*s2, 0x0),
+                9 => _mm512_permutex_epi64(*s2, 0x55),
+                10 => _mm512_permutex_epi64(*s2, 0xAA),
+                11 => _mm512_permutex_epi64(*s2, 0xFF),
+                _ => _mm512_permutex_epi64(*s0, 0x55),
+            };
+            let t0 = _mm512_loadu_epi64(
+                (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][0..8])
+                    .as_ptr()
+                    .cast::<i64>(),
+            );
+            let t1 = _mm512_loadu_epi64(
+                (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][8..16])
+                    .as_ptr()
+                    .cast::<i64>(),
+            );
+            let t2 = _mm512_loadu_epi64(
+                (&FAST_PARTIAL_ROUND_INITIAL_MATRIX_AVX512[r][16..24])
+                    .as_ptr()
+                    .cast::<i64>(),
+            );
+            let m0 = mult_avx512(&sr, &t0);
+            let m1 = mult_avx512(&sr, &t1);
+            let m2 = mult_avx512(&sr, &t2);
+            r0 = add_avx512(&r0, &m0);
+            r1 = add_avx512(&r1, &m1);
+            r2 = add_avx512(&r2, &m2);
+        }
     }
     *s0 = _mm512_mask_blend_epi64(0x11, r0, res0);
     *s1 = r1;
@@ -1649,20 +1632,20 @@ unsafe fn mds_partial_layer_fast_avx512<F>(
         state[0].to_noncanonical_u64() as i64,
         state[0].to_noncanonical_u64() as i64,
     );
-    let rc0 = _mm512_loadu_si512(
+    let rc0 = _mm512_loadu_epi64(
         (&FAST_PARTIAL_ROUND_VS_AVX512[r][0..8])
             .as_ptr()
-            .cast::<i32>(),
+            .cast::<i64>(),
     );
-    let rc1 = _mm512_loadu_si512(
+    let rc1 = _mm512_loadu_epi64(
         (&FAST_PARTIAL_ROUND_VS_AVX512[r][8..16])
             .as_ptr()
-            .cast::<i32>(),
+            .cast::<i64>(),
     );
-    let rc2 = _mm512_loadu_si512(
+    let rc2 = _mm512_loadu_epi64(
         (&FAST_PARTIAL_ROUND_VS_AVX512[r][16..24])
             .as_ptr()
-            .cast::<i32>(),
+            .cast::<i64>(),
     );
     let (mh, ml) = mult_avx512_128(&ss0, &rc0);
     let m = reduce_avx512_128_64(&mh, &ml);
@@ -1687,9 +1670,9 @@ unsafe fn mds_partial_layer_fast_avx512<F>(
     let m = reduce_avx512_128_64(&mh, &ml);
     *s2 = add_avx512(s2, &m);
 
-    _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), *s0);
-    _mm512_storeu_si512((state[8..16]).as_mut_ptr().cast::<i32>(), *s1);
-    _mm512_storeu_si512((state[16..24]).as_mut_ptr().cast::<i32>(), *s2);
+    _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), *s0);
+    _mm512_storeu_epi64((state[8..16]).as_mut_ptr().cast::<i64>(), *s1);
+    _mm512_storeu_epi64((state[16..24]).as_mut_ptr().cast::<i64>(), *s2);
 }
 
 #[allow(unused)]
@@ -1704,22 +1687,22 @@ where
         // Self::full_rounds(&mut state, &mut round_ctr);
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state
-            let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
-            let s1 = _mm512_loadu_si512((&state[4..12]).as_ptr().cast::<i32>());
+            let s0 = _mm512_loadu_epi64((&state[0..8]).as_ptr().cast::<i64>());
+            let s1 = _mm512_loadu_epi64((&state[4..12]).as_ptr().cast::<i64>());
 
             let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
-            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
+            let rc0 = _mm512_loadu_epi64((&rc[0..8]).as_ptr().cast::<i64>());
+            let rc1 = _mm512_loadu_epi64((&rc[4..12]).as_ptr().cast::<i64>());
             let ss0 = add_avx512(&s0, &rc0);
             let ss1 = add_avx512(&s1, &rc1);
             let r0 = sbox_avx512_one(&ss0);
             let r1 = sbox_avx512_one(&ss1);
 
             // store state
-            _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
+            _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), r0);
+            _mm512_storeu_epi64((state[4..12]).as_mut_ptr().cast::<i64>(), r1);
 
             *state = <F as Poseidon>::mds_layer(&state);
             round_ctr += 1;
@@ -1737,22 +1720,22 @@ where
         // Self::full_rounds(&mut state, &mut round_ctr);
         for _ in 0..HALF_N_FULL_ROUNDS {
             // load state
-            let s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
-            let s1 = _mm512_loadu_si512((&state[4..12]).as_ptr().cast::<i32>());
+            let s0 = _mm512_loadu_epi64((&state[0..8]).as_ptr().cast::<i64>());
+            let s1 = _mm512_loadu_epi64((&state[4..12]).as_ptr().cast::<i64>());
 
             let rc: &[u64; 12] = &ALL_ROUND_CONSTANTS[SPONGE_WIDTH * round_ctr..][..SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
-            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm512_loadu_si512((&rc[4..12]).as_ptr().cast::<i32>());
+            let rc0 = _mm512_loadu_epi64((&rc[0..8]).as_ptr().cast::<i64>());
+            let rc1 = _mm512_loadu_epi64((&rc[4..12]).as_ptr().cast::<i64>());
             let ss0 = add_avx512(&s0, &rc0);
             let ss1 = add_avx512(&s1, &rc1);
             let r0 = sbox_avx512_one(&ss0);
             let r1 = sbox_avx512_one(&ss1);
 
             // store state
-            _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), r0);
-            _mm512_storeu_si512((state[4..12]).as_mut_ptr().cast::<i32>(), r1);
+            _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), r0);
+            _mm512_storeu_epi64((state[4..12]).as_mut_ptr().cast::<i64>(), r1);
 
             *state = <F as Poseidon>::mds_layer(&state);
             // mds_layer_avx::<F>(&mut s0, &mut s1, &mut s2);
@@ -1780,18 +1763,18 @@ where
 
     unsafe {
         // load state
-        let mut s0 = _mm512_loadu_si512((&state[0..8]).as_ptr().cast::<i32>());
-        let mut s1 = _mm512_loadu_si512((&state[8..16]).as_ptr().cast::<i32>());
-        let mut s2 = _mm512_loadu_si512((&state[16..24]).as_ptr().cast::<i32>());
+        let mut s0 = _mm512_loadu_epi64((&state[0..8]).as_ptr().cast::<i64>());
+        let mut s1 = _mm512_loadu_epi64((&state[8..16]).as_ptr().cast::<i64>());
+        let mut s2 = _mm512_loadu_epi64((&state[16..24]).as_ptr().cast::<i64>());
 
         for _ in 0..HALF_N_FULL_ROUNDS {
             let rc: &[u64; 24] = &ALL_ROUND_CONSTANTS_AVX512[2 * SPONGE_WIDTH * round_ctr..]
                 [..2 * SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
-            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm512_loadu_si512((&rc[8..16]).as_ptr().cast::<i32>());
-            let rc2 = _mm512_loadu_si512((&rc[16..24]).as_ptr().cast::<i32>());
+            let rc0 = _mm512_loadu_epi64((&rc[0..8]).as_ptr().cast::<i64>());
+            let rc1 = _mm512_loadu_epi64((&rc[8..16]).as_ptr().cast::<i64>());
+            let rc2 = _mm512_loadu_epi64((&rc[16..24]).as_ptr().cast::<i64>());
             let ss0 = add_avx512(&s0, &rc0);
             let ss1 = add_avx512(&s1, &rc1);
             let ss2 = add_avx512(&s2, &rc2);
@@ -1803,20 +1786,20 @@ where
         }
 
         // this does partial_first_constant_layer_avx(&mut state);
-        let c0 = _mm512_loadu_si512(
+        let c0 = _mm512_loadu_epi64(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT_AVX512[0..8])
                 .as_ptr()
-                .cast::<i32>(),
+                .cast::<i64>(),
         );
-        let c1 = _mm512_loadu_si512(
+        let c1 = _mm512_loadu_epi64(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT_AVX512[8..16])
                 .as_ptr()
-                .cast::<i32>(),
+                .cast::<i64>(),
         );
-        let c2 = _mm512_loadu_si512(
+        let c2 = _mm512_loadu_epi64(
             (&FAST_PARTIAL_FIRST_ROUND_CONSTANT_AVX512[16..24])
                 .as_ptr()
-                .cast::<i32>(),
+                .cast::<i64>(),
         );
         s0 = add_avx512(&s0, &c0);
         s1 = add_avx512(&s1, &c1);
@@ -1824,9 +1807,9 @@ where
 
         mds_partial_layer_init_avx512::<F>(&mut s0, &mut s1, &mut s2);
 
-        _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), s0);
-        _mm512_storeu_si512((state[8..16]).as_mut_ptr().cast::<i32>(), s1);
-        _mm512_storeu_si512((state[16..24]).as_mut_ptr().cast::<i32>(), s2);
+        _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), s0);
+        _mm512_storeu_epi64((state[8..16]).as_mut_ptr().cast::<i64>(), s1);
+        _mm512_storeu_epi64((state[16..24]).as_mut_ptr().cast::<i64>(), s2);
 
         for i in 0..N_PARTIAL_ROUNDS {
             state[0] = sbox_monomial(state[0]);
@@ -1844,9 +1827,9 @@ where
                 [..2 * SPONGE_WIDTH]
                 .try_into()
                 .unwrap();
-            let rc0 = _mm512_loadu_si512((&rc[0..8]).as_ptr().cast::<i32>());
-            let rc1 = _mm512_loadu_si512((&rc[8..16]).as_ptr().cast::<i32>());
-            let rc2 = _mm512_loadu_si512((&rc[16..24]).as_ptr().cast::<i32>());
+            let rc0 = _mm512_loadu_epi64((&rc[0..8]).as_ptr().cast::<i64>());
+            let rc1 = _mm512_loadu_epi64((&rc[8..16]).as_ptr().cast::<i64>());
+            let rc2 = _mm512_loadu_epi64((&rc[16..24]).as_ptr().cast::<i64>());
             let ss0 = add_avx512(&s0, &rc0);
             let ss1 = add_avx512(&s1, &rc1);
             let ss2 = add_avx512(&s2, &rc2);
@@ -1858,9 +1841,9 @@ where
         }
 
         // store state
-        _mm512_storeu_si512((state[0..8]).as_mut_ptr().cast::<i32>(), s0);
-        _mm512_storeu_si512((state[8..16]).as_mut_ptr().cast::<i32>(), s1);
-        _mm512_storeu_si512((state[16..24]).as_mut_ptr().cast::<i32>(), s2);
+        _mm512_storeu_epi64((state[0..8]).as_mut_ptr().cast::<i64>(), s0);
+        _mm512_storeu_epi64((state[8..16]).as_mut_ptr().cast::<i64>(), s1);
+        _mm512_storeu_epi64((state[16..24]).as_mut_ptr().cast::<i64>(), s2);
 
         debug_assert_eq!(round_ctr, N_ROUNDS);
     };
@@ -1900,13 +1883,13 @@ where
         leaf_size / SPONGE_RATE + 1
     };
     for _ in 0..loops {
-        let end1 = if idx1 + SPONGE_RATE > leaf_size {
+        let end1 = if idx1 + SPONGE_RATE >= leaf_size {
             leaf_size
         } else {
             idx1 + SPONGE_RATE
         };
-        let end2 = if idx2 + SPONGE_RATE > inputs.len() {
-            inputs.len()
+        let end2 = if idx2 + SPONGE_RATE >= 2 * leaf_size {
+            2 * leaf_size
         } else {
             idx2 + SPONGE_RATE
         };

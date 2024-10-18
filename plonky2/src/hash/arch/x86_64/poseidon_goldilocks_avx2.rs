@@ -1411,6 +1411,7 @@ where
             let ss0 = add_avx(&s0, &rc0);
             let ss1 = add_avx(&s1, &rc1);
             let ss2 = add_avx(&s2, &rc2);
+
             (s0, s1, s2) = sbox_avx_m256i(&ss0, &ss1, &ss2);
             mds_layer_avx(&mut s0, &mut s1, &mut s2);
             round_ctr += 1;

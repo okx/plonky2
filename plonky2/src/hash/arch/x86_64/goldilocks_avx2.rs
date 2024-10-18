@@ -41,9 +41,16 @@ pub fn add_avx_a_sc(a_sc: &__m256i, b: &__m256i) -> __m256i {
 
 #[inline(always)]
 pub fn add_avx(a: &__m256i, b: &__m256i) -> __m256i {
-    let a_sc = shift_avx(a);
-    // let a_sc = toCanonical_avx_s(&a_s);
-    add_avx_a_sc(&a_sc, b)
+    unsafe {
+        let msb = _mm256_set_epi64x(MSB_1, MSB_1, MSB_1, MSB_1);
+        let a_sc = _mm256_xor_si256(*a, msb);
+        let c0_s = _mm256_add_epi64(a_sc, *b);
+        let p_n = _mm256_set_epi64x(P_N_1, P_N_1, P_N_1, P_N_1);
+        let mask_ = _mm256_cmpgt_epi64(a_sc, c0_s);
+        let corr_ = _mm256_and_si256(mask_, p_n);
+        let c_s = _mm256_add_epi64(c0_s, corr_);
+        _mm256_xor_si256(c_s, msb)
+    }
 }
 
 #[inline(always)]
